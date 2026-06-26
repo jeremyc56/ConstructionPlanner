@@ -881,7 +881,14 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   /* ---------- continuous scroll ---------- */
   /* calendar range is fixed to the whole of YEAR (2026); no dynamic re-anchoring */
-  function scrollToMonth(d){if(view!=="month")return;var key=d.getFullYear()+"-"+pad(d.getMonth()+1);var c=el.calGrid.querySelector('[data-month-key="'+key+'"]');var cont=el.calendarScroll;if(!c){return;}cont.scrollTop+=(c.getBoundingClientRect().top-cont.getBoundingClientRect().top-el.calTop.offsetHeight-6);}
+  function scrollToDate(dateKey){
+    if(view!=="month")return;
+    var c=el.calGrid.querySelector('[data-date="'+dateKey+'"]');
+    if(!c)return;
+    var cont=el.calendarScroll;
+    cont.scrollTop=c.offsetTop-el.calTop.offsetHeight-4;
+  }
+  function scrollToMonth(d){scrollToDate(ymd(new Date(d.getFullYear(),d.getMonth(),1)));}
   function updateMonthLabel(){if(view!=="month")return;var cont=el.calendarScroll,top=cont.getBoundingClientRect().top+el.calTop.offsetHeight+6,cells=el.calGrid.children;for(var i=0;i<cells.length;i++){var r=cells[i].getBoundingClientRect();if(r.bottom>top){if(cells[i].dataset.date){var d=parseYmd(cells[i].dataset.date);el.monthLabel.textContent=MONTHS[d.getMonth()]+" "+d.getFullYear();}return;}}}
 
   /* ---------- day modal ---------- */
@@ -1050,7 +1057,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   /* ---------- navigation / view ---------- */
   function step(dir){if(view==="month"){cursor.setDate(1);cursor.setMonth(cursor.getMonth()+dir);cursor=clampToYear(cursor);scrollToMonth(cursor);updateMonthLabel();}else if(view==="week"){cursor=clampToYear(addDays(cursor,7*dir));renderCalendar();}else{cursor=clampToYear(addDays(cursor,dir));renderCalendar();}}
-  function goToday(){cursor=clampToYear(new Date(today));if(view==="month"){scrollToMonth(cursor);updateMonthLabel();}else renderCalendar();}
+  function goToday(){cursor=clampToYear(new Date(today));if(view==="month"){scrollToDate(ymd(today));updateMonthLabel();}else renderCalendar();}
   function setView(v){view=v;Array.prototype.forEach.call(el.viewSeg.children,function(b){b.classList.toggle("active",b.dataset.view===v);});renderCalendar();if(v==="month")scrollToMonth(cursor);}
 
   /* ---------- init ---------- */
