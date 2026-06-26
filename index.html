@@ -1002,7 +1002,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     else t="Opened as a local file: “Save changes” downloads the file (move/replace it in your shared OneDrive folder) and “Open file” loads one back in. Host the app for one-click in-place saving.";
     el.sharedStatus.textContent=t;
   }
-  function applyLoaded(){cursor=clampToYear(new Date(today));renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();scrollToMonth(cursor);renderShared();}
+  function applyLoaded(){cursor=clampToYear(new Date(today));renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);renderShared();}
   async function loadFromHandle(){
     try{var f=await fileHandle.getFile();var p=JSON.parse(await f.text());if(!p||!Array.isArray(p.projects))throw 0;localStorage.setItem(STORAGE_KEY,JSON.stringify(p));state=load();loadedStamp=(state.meta&&state.meta.savedAt)||0;applyLoaded();toast("Loaded shared calendar");}
     catch(e){toast("That file isn't a valid planner file.");}
@@ -1104,7 +1104,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.calendarScroll.addEventListener("scroll",function(){if(view!=="month"||labelTick)return;labelTick=true;requestAnimationFrame(function(){labelTick=false;updateMonthLabel();});});
 
   recomputeSchedule();
-  renderProjects();renderLibrary();refreshFilters();updateWeatherUI();renderCalendar();scrollToMonth(today);
+  renderProjects();renderLibrary();refreshFilters();updateWeatherUI();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);
   if(state.settings&&state.settings.lat!=null)loadWeather();
   bootCloud();
 })();
