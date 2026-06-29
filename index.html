@@ -965,7 +965,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     if(creatingForDate!==null){
       var name=el.editName.value.trim();if(!name){el.editName.focus();toast("Task needs a name.");return;}
       if(!validStart(el.editStart.value)){el.editStart.focus();toast("Enter a valid start date.");return;}
-      var nt={id:uid(),project:state.activeProject,name:name,start:el.editStart.value,duration:coerceDuration(el.editDuration.value),color:editColor,status:coerceStatus(el.editStatus.value),crew:el.editCrew.value.trim(),zone:el.editZone.value.trim(),notes:el.editNotes.value.trim(),progress:coerceProgress(el.editProgress.value),deps:[],sortOrder:nextSortOrder()};
+      var nt={id:uid(),projectId:state.activeProject,name:name,start:el.editStart.value,duration:coerceDuration(el.editDuration.value),color:editColor,status:coerceStatus(el.editStatus.value),crew:el.editCrew.value.trim(),zone:el.editZone.value.trim(),notes:el.editNotes.value.trim(),progress:coerceProgress(el.editProgress.value),deps:[],sortOrder:nextSortOrder()};
       state.tasks.push(nt);creatingForDate=null;
       recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.modal);toast('"'+name+'" added');return;
     }
