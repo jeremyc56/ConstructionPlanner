@@ -138,6 +138,8 @@ select.text-input{appearance:none;-webkit-appearance:none;cursor:pointer;backgro
 .day.drop-target{border-color:var(--green);background:var(--green-soft);box-shadow:0 0 0 2px rgba(0,119,60,.35);}
 .day-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;flex:none;}
 .day-head-l{display:flex;align-items:center;gap:6px;min-width:0;}
+.day-add{display:none;width:22px;height:22px;border-radius:50%;border:none;background:transparent;color:var(--text-2);font-size:20px;line-height:1;cursor:pointer;padding:0;align-items:center;justify-content:center;flex-shrink:0;margin-left:auto;}
+.day:hover .day-add{display:flex;}.day-add:hover{background:var(--border);color:var(--green);}
 .day-num{font-size:13px;font-weight:700;color:var(--text-2);min-width:24px;height:24px;display:grid;place-items:center;padding:0 4px;}
 .day.today .day-num{background:var(--green);color:#fff;border-radius:12px;}
 .day-month{font-size:10px;font-weight:700;color:var(--text-mut);}
@@ -780,7 +782,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var head=document.createElement("div");head.className="day-head";var left=document.createElement("div");left.className="day-head-l";
     left.innerHTML='<span class="day-num">'+date.getDate()+'</span>'+(first?'<span class="day-month">'+MONTHS[date.getMonth()].slice(0,3)+'</span>':"");
     if(hol){var tag=document.createElement("span");if(hol.ph){tag.className="hol-tag ph";tag.textContent=hol.ph;}else{tag.className="hol-tag rdo";tag.textContent="RDO";tag.title=hol.rdo;}left.appendChild(tag);}
-    head.appendChild(left);var wx=weatherChip(key);if(wx)head.appendChild(wx);cell.appendChild(head);return cell;
+    head.appendChild(left);var wx=weatherChip(key);if(wx)head.appendChild(wx);var addBtn=document.createElement("button");addBtn.className="day-add";addBtn.type="button";addBtn.title="Add task";addBtn.textContent="+";addBtn.addEventListener("click",function(e){e.stopPropagation();openCreate(key);});head.appendChild(addBtn);cell.appendChild(head);return cell;
   }
   function attachCell(cell){
     cell.addEventListener("dblclick",function(){openDayModal(this.dataset.date);});
