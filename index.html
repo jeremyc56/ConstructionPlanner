@@ -178,12 +178,14 @@ select.text-input{appearance:none;-webkit-appearance:none;cursor:pointer;backgro
 .chip.span-start{border-top-right-radius:2px;border-bottom-right-radius:2px;}
 .chip.span-mid{border-radius:2px;}
 .chip.span-end{border-top-left-radius:2px;border-bottom-left-radius:2px;}
-.chip .status-dot{width:8px;height:8px;border-radius:50%;flex:none;background:rgba(255,255,255,.9);box-shadow:0 0 0 1.5px rgba(0,0,0,.10);}
+.chip-check{width:15px;height:15px;flex:none;border-radius:4px;border:1.6px solid currentColor;background:transparent;opacity:.85;padding:0;cursor:pointer;position:relative;-webkit-appearance:none;appearance:none;}
+.chip-check:hover{opacity:1;}
+.chip-check.done{background:#fff;border-color:rgba(0,0,0,.15);opacity:1;}
+.chip-check.done::after{content:"";position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath d='M5 13l4 4L19 7' fill='none' stroke='%2300773C' stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/11px no-repeat;}
 .chip[data-status="complete"]{filter:saturate(.55) brightness(1.02);}
 .chip[data-status="complete"] .chip-name{text-decoration:line-through;opacity:.9;}
 .chip[data-status="delayed"]{box-shadow:0 0 0 2px rgba(228,21,28,.55),var(--shadow-sm);}
 .chip[data-status="on-hold"]{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.14) 0 6px,transparent 6px 12px);}
-.chip[data-status="in-progress"] .status-dot{background:#FFE08A;}
 .chip-prog{position:absolute;left:0;bottom:0;height:3px;width:100%;background:rgba(0,0,0,.18);}
 .chip-prog i{display:block;height:100%;background:rgba(255,255,255,.92);}
 .chip-dep{flex:none;font-size:9px;opacity:.85;}
@@ -886,15 +888,25 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var spanCls=dur>1?(entry.isStart?" span-start":(entry.isEnd?" span-end":" span-mid")):"";
     chip.className="chip"+spanCls+(filterActive()&&!matchTask(t)?" dim":"");
     chip.style.setProperty("--c",t.color);chip.style.color=textOn(t.color);chip.dataset.taskId=t.id;chip.dataset.status=t.status;chip.tabIndex=0;chip.setAttribute("role","button");
-    var showName=entry.isStart||dow===0||rich;var html='<span class="status-dot"></span>';
+    var showName=entry.isStart||dow===0||rich;var html='';
     if(showName){html+='<span class="chip-name">'+esc(t.name)+'</span>';if(t.deps&&t.deps.length&&entry.isStart)html+='<span class="chip-dep">⛓</span>';if(entry.isStart&&dur>1)html+='<span class="chip-dur">'+dur+'d</span>';if(entry.isStart&&t.crew)html+='<span class="chip-crew">'+esc(t.crew)+'</span>';}
     else html+='<span class="chip-name" style="opacity:.55">'+esc(t.name)+'</span>';
     chip.innerHTML=html;
+    var check=document.createElement("button");check.type="button";check.className="chip-check"+(t.status==="complete"?" done":"");
+    check.title=t.status==="complete"?"Mark not complete":"Mark complete";check.setAttribute("aria-pressed",t.status==="complete"?"true":"false");
+    check.addEventListener("mousedown",function(e){e.stopPropagation();});
+    check.addEventListener("click",function(e){
+      e.stopPropagation();
+      var complete=t.status!=="complete";
+      t.status=complete?"complete":"planned";t.progress=complete?100:0;
+      save();renderCalendar();
+    });
+    chip.insertBefore(check,chip.firstChild);
     if(coerceProgress(t.progress)>0){var pr=document.createElement("span");pr.className="chip-prog";pr.innerHTML='<i style="width:'+coerceProgress(t.progress)+'%"></i>';chip.appendChild(pr);}
     if(entry.isEnd){var rz=document.createElement("span");rz.className="rsz";rz.title="Drag to change duration";attachResize(rz,t);chip.appendChild(rz);}
     chip.title=t.name+(t.crew?" — "+t.crew:"")+(t.zone?" — "+t.zone:"")+"\nStatus: "+statusLabel(t.status)+" · "+coerceProgress(t.progress)+"%\n"+t.start+(dur>1?" → "+endDate(t)+" ("+dur+" days)":"")+(t.notes?"\n"+t.notes:"");
-    chip.addEventListener("mousedown",function(e){if(e.button!==0||e.target.closest(".rsz"))return;beginDrag(e,"task",t.id,entry.dayIndex,t.name,t.color,chip);});
-    chip.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();openEditor(t.id,chip);}});
+    chip.addEventListener("mousedown",function(e){if(e.button!==0||e.target.closest(".rsz")||e.target.closest(".chip-check"))return;beginDrag(e,"task",t.id,entry.dayIndex,t.name,t.color,chip);});
+    chip.addEventListener("keydown",function(e){if(e.target.closest(".chip-check"))return;if(e.key==="Enter"||e.key===" "){e.preventDefault();openEditor(t.id,chip);}});
     return chip;
   }
 
