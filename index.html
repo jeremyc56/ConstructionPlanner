@@ -118,11 +118,21 @@ select.text-input{appearance:none;-webkit-appearance:none;cursor:pointer;backgro
 .color-filter .cf.active{border-color:var(--text);}
 .legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text-mut);font-weight:600;margin-left:auto;}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
-.weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px;}
+.weekdays{display:grid;grid-template-columns:repeat(7,1fr) 26px;gap:8px;margin-bottom:8px;}
 .weekdays span{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-mut);padding-left:4px;}
-.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;padding-bottom:18px;}
+.grid{display:grid;grid-template-columns:repeat(7,1fr) 26px;gap:8px;padding-bottom:18px;}
 .grid.month{grid-auto-rows:auto;}
 .grid.week{grid-auto-rows:auto;}
+.week-menu-cell{display:flex;align-items:flex-start;justify-content:center;padding-top:2px;}
+.week-menu-btn{width:24px;height:24px;border:none;background:transparent;color:var(--text-mut);border-radius:6px;cursor:pointer;display:grid;place-items:center;opacity:.4;transition:opacity .12s,background .12s;}
+.week-menu-btn:hover,.week-menu-btn.open{opacity:1;background:var(--border);color:var(--text);}
+.week-menu-pop{position:fixed;z-index:80;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:5px;min-width:150px;}
+.week-menu-pop button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;background:none;font-size:13px;font-weight:600;color:var(--text);border-radius:7px;cursor:pointer;text-align:left;}
+.week-menu-pop button:hover:not(:disabled){background:var(--green-soft);color:var(--green);}
+.week-menu-pop button:disabled{color:var(--text-mut);cursor:not-allowed;opacity:.5;}
+.week-menu-pop button.danger:hover:not(:disabled){background:#FDECEC;color:var(--red);}
+.week-menu-pop svg{flex:none;}
+.week-menu-pop hr{border:none;border-top:1px solid var(--border);margin:4px 2px;}
 .grid.day{grid-template-columns:1fr;grid-auto-rows:auto;}
 
 .day{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:8px;display:flex;flex-direction:column;box-shadow:var(--shadow-sm);min-height:260px;overflow:visible;}
@@ -491,7 +501,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
           <button class="btn-sm" id="clearFilter">Clear</button>
           <span class="legend"><span><i style="background:var(--ph)"></i>Public holiday</span><span><i style="background:var(--rdo)"></i>RDO</span></span>
         </div>
-        <div class="weekdays" id="weekdays"><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span></div>
+        <div class="weekdays" id="weekdays"><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span><span></span></div>
       </div>
       <div class="grid month" id="calGrid"></div>
     </main>
@@ -840,7 +850,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var gridEnd=addDays(mondayOf(new Date(YEAR,11,31)),6);
     var total=Math.round((gridEnd-gridStart)/86400000)+1;var map=tasksByDate(ymd(gridStart),ymd(gridEnd));
     el.calGrid.innerHTML="";
-    for(var i=0;i<total;i++){var date=addDays(gridStart,i),key=ymd(date),dow=(date.getDay()+6)%7;var cell=makeDayCell(date,{inMonth:date.getFullYear()===YEAR});fillDayTasks(cell,key,dow,{map:map,cap:MAX_VISIBLE,rich:false});attachCell(cell);el.calGrid.appendChild(cell);}
+    for(var i=0;i<total;i++){var date=addDays(gridStart,i),key=ymd(date),dow=(date.getDay()+6)%7;var cell=makeDayCell(date,{inMonth:date.getFullYear()===YEAR});fillDayTasks(cell,key,dow,{map:map,cap:MAX_VISIBLE,rich:false});attachCell(cell);el.calGrid.appendChild(cell);if(dow===6)el.calGrid.appendChild(weekMenuCell(ymd(addDays(date,-6))));}
     updateMonthLabel();
   }
   function renderWeek(){
@@ -848,6 +858,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     el.monthLabel.textContent=start.getDate()+" "+MONTHS[start.getMonth()].slice(0,3)+" – "+end.getDate()+" "+MONTHS[end.getMonth()].slice(0,3)+" "+end.getFullYear();
     var map=tasksByDate(ymd(start),ymd(end));el.calGrid.innerHTML="";
     for(var i=0;i<7;i++){var date=addDays(start,i),key=ymd(date),dow=(date.getDay()+6)%7;var cell=makeDayCell(date,{});fillDayTasks(cell,key,dow,{map:map,rich:true});attachCell(cell);el.calGrid.appendChild(cell);}
+    el.calGrid.appendChild(weekMenuCell(ymd(start)));
   }
   function renderDay(){
     var key=ymd(cursor);el.monthLabel.textContent=fmtLong(cursor);el.calGrid.innerHTML="";
@@ -880,6 +891,124 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     chip.addEventListener("mousedown",function(e){if(e.button!==0||e.target.closest(".rsz"))return;beginDrag(e,"task",t.id,entry.dayIndex,t.name,t.color,chip);});
     chip.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();openEditor(t.id,chip);}});
     return chip;
+  }
+
+  /* ---------- week batch actions (cut / copy / paste / shift / delete) ---------- */
+  var weekClipboard=null; /* {tasks:[{...task fields, dayOffset}]} */
+  var openWeekPop=null;
+  function weekTasksStartingIn(weekStartKey){
+    var weekEndKey=ymd(addDays(parseYmd(weekStartKey),6));
+    return tasksForProject().filter(function(t){return t.start>=weekStartKey&&t.start<=weekEndKey;});
+  }
+  function closeWeekPop(){
+    if(!openWeekPop)return;
+    openWeekPop.pop.remove();
+    if(openWeekPop.btn)openWeekPop.btn.classList.remove("open");
+    openWeekPop=null;
+  }
+  document.addEventListener("mousedown",function(e){if(openWeekPop&&!e.target.closest(".week-menu-pop")&&!e.target.closest(".week-menu-btn"))closeWeekPop();});
+  document.addEventListener("keydown",function(e){if(e.key==="Escape"&&openWeekPop)closeWeekPop();});
+  function weekMenuCell(weekStartKey){
+    var cell=document.createElement("div");cell.className="week-menu-cell";
+    var btn=document.createElement("button");btn.type="button";btn.className="week-menu-btn";btn.title="Week actions";btn.setAttribute("aria-label","Week actions");
+    btn.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="5" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="19" r="1.8" fill="currentColor"/></svg>';
+    btn.addEventListener("click",function(e){e.stopPropagation();if(openWeekPop&&openWeekPop.btn===btn){closeWeekPop();return;}openWeekMenu(btn,weekStartKey);});
+    cell.appendChild(btn);
+    return cell;
+  }
+  function weekMenuIcon(d){return {
+    cut:'<svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 9a3 3 0 100-6 3 3 0 000 6zm0 12a3 3 0 100-6 3 3 0 000 6zm14-16L8.5 12M20 19L6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    copy:'<svg viewBox="0 0 24 24" width="15" height="15"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+    paste:'<svg viewBox="0 0 24 24" width="15" height="15"><rect x="6" y="4" width="12" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 4h6v2H9z" fill="currentColor"/></svg>',
+    shift:'<svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 12h16M14 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    del:'<svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-8 0v12a2 2 0 002 2h4a2 2 0 002-2V7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+  }[d];}
+  function openWeekMenu(btn,weekStartKey){
+    closeWeekPop();
+    var pop=document.createElement("div");pop.className="week-menu-pop";
+    function item(icon,label,fn,disabled,danger){
+      var b=document.createElement("button");b.type="button";b.innerHTML=weekMenuIcon(icon)+"<span>"+label+"</span>";
+      if(danger)b.className="danger";if(disabled)b.disabled=true;
+      b.addEventListener("click",function(){closeWeekPop();fn();});
+      pop.appendChild(b);return b;
+    }
+    item("cut","Cut week",function(){cutWeek(weekStartKey);});
+    item("copy","Copy week",function(){copyWeek(weekStartKey);});
+    item("paste","Paste week",function(){pasteWeek(weekStartKey);},!weekClipboard);
+    item("shift","Shift week…",function(){shiftWeek(weekStartKey);});
+    var hr=document.createElement("hr");pop.appendChild(hr);
+    item("del","Delete week",function(){deleteWeek(weekStartKey);},false,true);
+    document.body.appendChild(pop);
+    var r=btn.getBoundingClientRect();
+    pop.style.top=r.bottom+4+"px";pop.style.left=Math.max(8,r.right-pop.offsetWidth)+"px";
+    var pr=pop.getBoundingClientRect();
+    if(pr.right>window.innerWidth-8)pop.style.left=(window.innerWidth-pr.width-8)+"px";
+    if(pr.bottom>window.innerHeight-8)pop.style.top=(r.top-pr.height-4)+"px";
+    btn.classList.add("open");openWeekPop={pop:pop,btn:btn};
+  }
+  function snapshotWeek(weekStartKey){
+    var ts=weekTasksStartingIn(weekStartKey);
+    return ts.map(function(t){return Object.assign({},t,{dayOffset:Math.round((parseYmd(t.start)-parseYmd(weekStartKey))/86400000)});});
+  }
+  function cutWeek(weekStartKey){
+    var ts=weekTasksStartingIn(weekStartKey);
+    if(!ts.length){toast("No tasks in this week to cut.");return;}
+    weekClipboard={tasks:snapshotWeek(weekStartKey)};
+    var ids={};ts.forEach(function(t){ids[t.id]=1;});
+    var removedSnapshot=ts.slice();
+    state.tasks=state.tasks.filter(function(t){return !ids[t.id];});
+    recomputeSchedule();save();refreshFilters();renderCalendar();
+    toast("Cut "+ts.length+" task"+(ts.length===1?"":"s")+" from this week","Undo",function(){
+      state.tasks=state.tasks.concat(removedSnapshot);recomputeSchedule();save();refreshFilters();renderCalendar();
+    });
+  }
+  function copyWeek(weekStartKey){
+    var ts=weekTasksStartingIn(weekStartKey);
+    if(!ts.length){toast("No tasks in this week to copy.");return;}
+    weekClipboard={tasks:snapshotWeek(weekStartKey)};
+    toast("Copied "+ts.length+" task"+(ts.length===1?"":"s")+" — pick a week and choose Paste");
+  }
+  function pasteWeek(targetWeekStartKey){
+    if(!weekClipboard||!weekClipboard.tasks.length){toast("Clipboard is empty — Cut or Copy a week first.");return;}
+    var idMap={};
+    var added=weekClipboard.tasks.map(function(pt){
+      var nt=Object.assign({},pt);delete nt.dayOffset;
+      nt.id=uid();nt.projectId=state.activeProject;nt.start=ymd(addDays(parseYmd(targetWeekStartKey),pt.dayOffset));nt.sortOrder=nextSortOrder();
+      idMap[pt.id]=nt.id;
+      return nt;
+    });
+    added.forEach(function(nt){if(nt.deps&&nt.deps.length)nt.deps=nt.deps.map(function(d){return idMap[d];}).filter(Boolean);});
+    state.tasks=state.tasks.concat(added);
+    recomputeSchedule();save();refreshFilters();renderCalendar();
+    var addedIds={};added.forEach(function(t){addedIds[t.id]=1;});
+    toast("Pasted "+added.length+" task"+(added.length===1?"":"s"),"Undo",function(){
+      state.tasks=state.tasks.filter(function(t){return !addedIds[t.id];});recomputeSchedule();save();refreshFilters();renderCalendar();
+    });
+  }
+  function shiftWeek(weekStartKey){
+    var ts=weekTasksStartingIn(weekStartKey);
+    if(!ts.length){toast("No tasks in this week to shift.");return;}
+    var ans=window.prompt("Shift this week's "+ts.length+" task(s) by how many days? (e.g. 7 to move forward a week, -7 to move back)","7");
+    if(ans==null)return;
+    var n=parseInt(ans,10);if(isNaN(n)||n===0){toast("Enter a non-zero number of days.");return;}
+    var prevStarts={};ts.forEach(function(t){prevStarts[t.id]=t.start;});
+    ts.forEach(function(t){t.start=ymd(addDays(parseYmd(t.start),n));});
+    recomputeSchedule();save();refreshFilters();renderCalendar();
+    toast("Shifted "+ts.length+" task"+(ts.length===1?"":"s")+" by "+n+" day"+(Math.abs(n)===1?"":"s"),"Undo",function(){
+      ts.forEach(function(t){if(prevStarts[t.id])t.start=prevStarts[t.id];});
+      recomputeSchedule();save();refreshFilters();renderCalendar();
+    });
+  }
+  function deleteWeek(weekStartKey){
+    var ts=weekTasksStartingIn(weekStartKey);
+    if(!ts.length){toast("No tasks in this week to delete.");return;}
+    var ids={};ts.forEach(function(t){ids[t.id]=1;});
+    var removedSnapshot=ts.slice();
+    state.tasks=state.tasks.filter(function(t){return !ids[t.id];});
+    recomputeSchedule();save();refreshFilters();renderCalendar();
+    toast("Deleted "+ts.length+" task"+(ts.length===1?"":"s")+" from this week","Undo",function(){
+      state.tasks=state.tasks.concat(removedSnapshot);recomputeSchedule();save();refreshFilters();renderCalendar();
+    });
   }
 
   /* ---------- unified pointer drag (move tasks / place library items) ---------- */
@@ -1059,11 +1188,13 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     if(m)return "Zone M"+m[1];
     return first||"Zone";
   }
+  function isContLine(line){return /^cont(inued?)?\.?$/i.test(line.trim());}
   function parseLookaheadSheet(ws){
     var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
     var dateCols=null; /* {colIndex: "yyyy-mm-dd"} for the block currently being read */
     var raw=[]; /* {zone,date,name} */
     var skipped=0;
+    var lastLinesByZone={};
     for(var r=0;r<rows.length;r++){
       var row=rows[r]||[];
       var serialCols={};var serialCount=0;
@@ -1074,15 +1205,25 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
       if(zoneCell==null||String(zoneCell).trim()==="")continue;
       var zone=cleanZoneLabel(zoneCell);
       if(/^workzone$/i.test(zone))continue;
-      Object.keys(dateCols).forEach(function(c){
-        var cell=row[c];if(cell==null||String(cell).trim()==="")return;
-        var lines=String(cell).split(/\r\n|\r|\n/);
-        lines.forEach(function(line){
-          line=line.replace(/[\t]+/g," ").trim();
-          if(!line)return;
-          if(SKIP_LINES[line.toUpperCase()]){skipped++;return;}
-          raw.push({zone:zone,date:dateCols[c],name:line.slice(0,120)});
+      var cols=Object.keys(dateCols).sort(function(a,b){return a-b;});
+      cols.forEach(function(c){
+        var cell=row[c];if(cell==null||String(cell).trim()===""){return;}
+        var lines=String(cell).split(/\r\n|\r|\n/).map(function(l){return l.replace(/[\t]+/g," ").trim();}).filter(function(l){return l!=="";});
+        var resolved=[];
+        lines.forEach(function(line,li){
+          var up=line.toUpperCase();
+          if(SKIP_LINES[up]){skipped++;return;}
+          if(isContLine(line)){
+            var prev=lastLinesByZone[zone]||[];
+            if(lines.length===1&&prev.length){resolved=resolved.concat(prev);}
+            else if(prev[li]){resolved.push(prev[li]);}
+            else{skipped++;}
+            return;
+          }
+          resolved.push(line);
         });
+        resolved.forEach(function(name){raw.push({zone:zone,date:dateCols[c],name:name.slice(0,120)});});
+        if(resolved.length)lastLinesByZone[zone]=resolved;
       });
     }
     /* merge identical consecutive-day tasks within the same zone into a single spanning task */
@@ -1146,6 +1287,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var p=importParsed;
     var removed=existingInRange(p.rangeStart,p.rangeEnd);
     el.importSummary.innerHTML="";
+    var l0=document.createElement("div");l0.innerHTML="Date range detected: <b>"+esc(fmtLong(parseYmd(p.rangeStart)))+"</b> to <b>"+esc(fmtLong(parseYmd(p.rangeEnd)))+"</b>.";el.importSummary.appendChild(l0);
     var l1=document.createElement("div");l1.innerHTML="<b>"+p.tasks.length+"</b> tasks will be imported across <b>"+p.zones.length+"</b> zone"+(p.zones.length===1?"":"s")+".";el.importSummary.appendChild(l1);
     var l2=document.createElement("div");l2.innerHTML="<b>"+removed.length+"</b> existing task"+(removed.length===1?"":"s")+" in this date range will be replaced.";el.importSummary.appendChild(l2);
     if(p.skipped){var l3=document.createElement("div");l3.textContent=p.skipped+" line(s) skipped (RDO / Public Holiday / No works / TBC labels).";el.importSummary.appendChild(l3);}
