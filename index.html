@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <style>
 :root{
   --green:#00773C;--green-dark:#015A2D;--green-darker:#013F20;--green-soft:#E7F2EB;--red:#E4151C;
@@ -199,6 +200,14 @@ select.text-input{appearance:none;-webkit-appearance:none;cursor:pointer;backgro
 .modal-overlay{position:fixed;inset:0;background:rgba(11,28,20,.42);backdrop-filter:blur(2px);display:grid;place-items:center;z-index:50;animation:fade .14s ease;}
 .modal{width:min(540px,92vw);background:var(--panel);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .16s cubic-bezier(.2,.9,.3,1.1);}
 .modal.modal-sm{width:min(440px,92vw);}
+.modal.modal-lg{width:min(640px,94vw);}
+.import-zones{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+.import-zone-row{display:flex;align-items:center;gap:10px;}
+.import-zone-row .swatches{margin:0;flex:1;}
+.import-zone-name{font-size:12.5px;font-weight:700;min-width:150px;flex:none;}
+.import-summary{display:flex;flex-direction:column;gap:6px;margin-top:8px;font-size:13px;color:var(--text-2);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;}
+.import-summary b{color:var(--text);}
+.import-removed-item{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-2);}
 @keyframes fade{from{opacity:0;}}
 @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98);}}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border);}
@@ -427,11 +436,13 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
           <div class="weather-status" id="weatherStatus">No location set — start typing a suburb for site weather (next 16 days).</div>
           <div class="tools-grid">
             <button class="btn-sm" id="lookaheadBtn"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 5h16v14H4zM4 9h16M9 9v10" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>Export</button>
+            <button class="btn-sm" id="importLookaheadBtn"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Import Lookahead</button>
             <button class="btn-sm" id="printBtn"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v6H8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Print</button>
             <button class="btn-sm" id="backupBtn">Backup</button>
             <button class="btn-sm" id="restoreBtn">Restore</button>
           </div>
           <input type="file" id="importFile" accept="application/json,.json" hidden />
+          <input type="file" id="importLookaheadFile" accept=".xlsx,.xls" hidden />
         </section>
 
         <section class="card">
@@ -524,6 +535,27 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
         <p class="hint">Produces a week-by-week lookahead (Mon–Sat) grouped by <b>Zone / Area</b>, in the SPA-style format, with public holidays and RDOs flagged. Opens in Excel.</p>
       </div>
       <div class="modal-foot"><div></div><div class="modal-foot-right"><button class="btn-ghost" id="exportCancel">Cancel</button><button class="btn-primary" id="exportGo">Export to Excel</button></div></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="importModal" hidden>
+    <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+      <div class="modal-head"><div><h3 id="importTitle">Import Lookahead</h3><div class="sub" id="importSub"></div></div><button class="icon-btn" id="importClose" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+      <div class="modal-body">
+        <div class="field-row" id="importSheetRow" style="display:none;margin-bottom:12px;"><div style="grid-column:1/-1;"><label class="field-label" for="importSheetSelect">Sheet</label><select id="importSheetSelect" class="text-input"></select></div></div>
+        <label class="field-label">Zones found — assign a colour to each</label>
+        <div id="importZones" class="import-zones"></div>
+        <label class="field-label" style="margin-top:14px;">What will happen</label>
+        <div id="importSummary" class="import-summary"></div>
+        <div id="importRemovedWrap" style="display:none;">
+          <label class="field-label">Existing tasks that will be replaced</label>
+          <div class="deps-list" id="importRemovedList" style="max-height:150px;"></div>
+        </div>
+        <div id="importSkippedWrap" style="display:none;margin-top:10px;">
+          <p class="hint" id="importSkippedHint"></p>
+        </div>
+      </div>
+      <div class="modal-foot"><div></div><div class="modal-foot-right"><button class="btn-ghost" id="importCancel">Cancel</button><button class="btn-primary" id="importConfirm">Confirm Import</button></div></div>
     </div>
   </div>
 
@@ -628,7 +660,9 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
    "modal","modalClose","modalTitle","editName","editStart","editDuration","editSwatches","editStatus","editCrew","editZone",
    "editProgress","editProgressVal","editDeps","editNotes","deleteBtn","cancelBtn","saveBtn","fabAdd",
    "dayModal","dayModalClose","dayModalTitle","dayModalSub","dayList",
-   "exportModal","exportClose","exportCancel","exportGo","expStart","expEnd","toast"
+   "exportModal","exportClose","exportCancel","exportGo","expStart","expEnd","toast",
+   "importLookaheadBtn","importLookaheadFile","importModal","importClose","importSub","importSheetRow","importSheetSelect",
+   "importZones","importSummary","importRemovedWrap","importRemovedList","importSkippedWrap","importSkippedHint","importCancel","importConfirm"
   ].forEach(function(id){el[id]=document.getElementById(id);});
 
   function coerceDuration(v){var n=parseInt(v,10);return Math.min(365,Math.max(1,isNaN(n)?1:n));}
@@ -1014,6 +1048,131 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     closeModal(el.exportModal);toast("Lookahead exported");
   }
 
+  /* ---------- lookahead import ---------- */
+  var SKIP_LINES={"RDO":1,"PUBLIC HOLIDAY":1,"NO WORKS":1,"TBC":1,"DAY":1,"NIGHT":1,"WORKZONE":1,"":1};
+  var importWorkbook=null,importParsed=null;
+  function excelSerialToDate(n){return new Date(Math.round((n-25569)*86400000));}
+  function looksLikeDateSerial(v){return typeof v==="number"&&v>25000&&v<80000;}
+  function cleanZoneLabel(s){
+    var first=String(s==null?"":s).split(/\r\n|\r|\n/)[0].replace(/[\s:.\-–]+$/,"").trim();
+    var m=first.match(/\bM\s*(\d+)\b/i);
+    if(m)return "Zone M"+m[1];
+    return first||"Zone";
+  }
+  function parseLookaheadSheet(ws){
+    var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
+    var dateCols=null; /* {colIndex: "yyyy-mm-dd"} for the block currently being read */
+    var raw=[]; /* {zone,date,name} */
+    var skipped=0;
+    for(var r=0;r<rows.length;r++){
+      var row=rows[r]||[];
+      var serialCols={};var serialCount=0;
+      for(var c=1;c<row.length;c++){if(looksLikeDateSerial(row[c])){serialCols[c]=ymd(excelSerialToDate(row[c]));serialCount++;}}
+      if(serialCount>=2){dateCols=serialCols;continue;}
+      if(!dateCols)continue;
+      var zoneCell=row[0];
+      if(zoneCell==null||String(zoneCell).trim()==="")continue;
+      var zone=cleanZoneLabel(zoneCell);
+      if(/^workzone$/i.test(zone))continue;
+      Object.keys(dateCols).forEach(function(c){
+        var cell=row[c];if(cell==null||String(cell).trim()==="")return;
+        var lines=String(cell).split(/\r\n|\r|\n/);
+        lines.forEach(function(line){
+          line=line.replace(/[\t]+/g," ").trim();
+          if(!line)return;
+          if(SKIP_LINES[line.toUpperCase()]){skipped++;return;}
+          raw.push({zone:zone,date:dateCols[c],name:line.slice(0,120)});
+        });
+      });
+    }
+    /* merge identical consecutive-day tasks within the same zone into a single spanning task */
+    var byZone={};raw.forEach(function(e){(byZone[e.zone]=byZone[e.zone]||[]).push(e);});
+    var tasks=[];
+    Object.keys(byZone).forEach(function(zone){
+      var byName={};byZone[zone].forEach(function(e){(byName[e.name]=byName[e.name]||[]).push(e.date);});
+      Object.keys(byName).forEach(function(name){
+        var dates=byName[name].slice().sort();
+        var i=0;
+        while(i<dates.length){
+          var start=dates[i],end=start,j=i;
+          while(j+1<dates.length&&ymd(addDays(parseYmd(end),1))===dates[j+1]){end=dates[j+1];j++;}
+          var dur=Math.round((parseYmd(end)-parseYmd(start))/86400000)+1;
+          tasks.push({zone:zone,name:name,start:start,duration:dur});
+          i=j+1;
+        }
+      });
+    });
+    var allDates=raw.map(function(e){return e.date;}).sort();
+    var zones=Object.keys(byZone);
+    return {tasks:tasks,zones:zones,skipped:skipped,rangeStart:allDates[0]||null,rangeEnd:allDates[allDates.length-1]||null};
+  }
+  function zoneColorFor(zone,idx,overrides){return (overrides&&overrides[zone])||PALETTE[idx%PALETTE.length];}
+  function openImportPreview(workbook){
+    importWorkbook=workbook;
+    var names=workbook.SheetNames;
+    el.importSheetRow.style.display=names.length>1?"":"none";
+    el.importSheetSelect.innerHTML="";
+    names.forEach(function(n){var o=document.createElement("option");o.value=n;o.textContent=n;el.importSheetSelect.appendChild(o);});
+    runImportParse();
+  }
+  var importZoneColors={};
+  function runImportParse(){
+    var sheetName=el.importSheetSelect.value||importWorkbook.SheetNames[0];
+    var ws=importWorkbook.Sheets[sheetName];
+    var parsed=parseLookaheadSheet(ws);
+    if(!parsed.tasks.length){toast("Couldn't find any tasks in that sheet — check it matches the Lookahead format.");return;}
+    importParsed=parsed;
+    importZoneColors={};parsed.zones.forEach(function(z,i){importZoneColors[z]=PALETTE[i%PALETTE.length];});
+    renderImportPreview();
+    if(el.importModal.hidden)openModal(el.importModal,el.importConfirm);
+  }
+  function renderImportPreview(){
+    var p=importParsed;
+    el.importSub.textContent=fmtLong(parseYmd(p.rangeStart))+" – "+fmtLong(parseYmd(p.rangeEnd));
+    el.importZones.innerHTML="";
+    p.zones.forEach(function(z){
+      var row=document.createElement("div");row.className="import-zone-row";
+      var label=document.createElement("div");label.className="import-zone-name";label.textContent=z;row.appendChild(label);
+      var sw=document.createElement("div");sw.className="swatches";row.appendChild(sw);
+      buildSwatches(sw,function(){return importZoneColors[z];},function(c){importZoneColors[z]=c;renderImportSummary();});
+      el.importZones.appendChild(row);
+    });
+    renderImportSummary();
+  }
+  function existingInRange(startKey,endKey){
+    return tasksForProject().filter(function(t){return covers(t,startKey)||covers(t,endKey)||(t.start>=startKey&&t.start<=endKey);});
+  }
+  function renderImportSummary(){
+    var p=importParsed;
+    var removed=existingInRange(p.rangeStart,p.rangeEnd);
+    el.importSummary.innerHTML="";
+    var l1=document.createElement("div");l1.innerHTML="<b>"+p.tasks.length+"</b> tasks will be imported across <b>"+p.zones.length+"</b> zone"+(p.zones.length===1?"":"s")+".";el.importSummary.appendChild(l1);
+    var l2=document.createElement("div");l2.innerHTML="<b>"+removed.length+"</b> existing task"+(removed.length===1?"":"s")+" in this date range will be replaced.";el.importSummary.appendChild(l2);
+    if(p.skipped){var l3=document.createElement("div");l3.textContent=p.skipped+" line(s) skipped (RDO / Public Holiday / No works / TBC labels).";el.importSummary.appendChild(l3);}
+    if(removed.length){
+      el.importRemovedWrap.style.display="";el.importRemovedList.innerHTML="";
+      removed.slice().sort(function(a,b){return a.start.localeCompare(b.start);}).forEach(function(t){
+        var row=document.createElement("div");row.className="import-removed-item";
+        row.innerHTML="<span>"+esc(t.name)+"</span><span>"+esc(fmtLong(parseYmd(t.start)))+"</span>";
+        el.importRemovedList.appendChild(row);
+      });
+    }else{el.importRemovedWrap.style.display="none";}
+  }
+  function confirmImport(){
+    var p=importParsed;if(!p)return;
+    var removed=existingInRange(p.rangeStart,p.rangeEnd);
+    var removedIds={};removed.forEach(function(t){removedIds[t.id]=1;});
+    var kept=state.tasks.filter(function(t){return !removedIds[t.id];});
+    var added=p.tasks.map(function(pt){return {id:uid(),projectId:state.activeProject,name:pt.name,color:zoneColorFor(pt.zone,0,importZoneColors),start:pt.start,duration:pt.duration,status:"planned",crew:"",zone:pt.zone,notes:"",progress:0,deps:[],sortOrder:nextSortOrder(),source:"import",importedAt:Date.now()};});
+    state.tasks=kept.concat(added);
+    recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.importModal);
+    var addedIds={};added.forEach(function(t){addedIds[t.id]=1;});
+    toast("Imported "+added.length+" tasks, replaced "+removed.length,"Undo",function(){
+      state.tasks=state.tasks.filter(function(t){return !addedIds[t.id];}).concat(removed);
+      recomputeSchedule();save();refreshFilters();renderCalendar();
+    });
+  }
+
   /* ---------- backup / restore ---------- */
   function backup(){download(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),"construction-planner-backup-"+ymd(today)+".json");toast("Backup saved");}
   function restore(file){var fr=new FileReader();fr.onload=function(){try{var p=JSON.parse(fr.result);if(!p||!Array.isArray(p.projects))throw 0;if(!window.confirm("Restore will REPLACE all current projects and tasks. Continue?"))return;localStorage.setItem(STORAGE_KEY,JSON.stringify(p));state=load();cursor=clampToYear(new Date(today));renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();scrollToMonth(cursor);toast("Backup restored");}catch(e){toast("Invalid backup file.");}};fr.readAsText(file);}
@@ -1131,6 +1290,18 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.modal.addEventListener("mousedown",function(e){if(e.target===el.modal)closeModal(el.modal);});
   el.dayModalClose.addEventListener("click",function(){closeModal(el.dayModal);});el.dayModal.addEventListener("mousedown",function(e){if(e.target===el.dayModal)closeModal(el.dayModal);});
   el.exportClose.addEventListener("click",function(){closeModal(el.exportModal);});el.exportCancel.addEventListener("click",function(){closeModal(el.exportModal);});el.exportGo.addEventListener("click",runExport);el.exportModal.addEventListener("mousedown",function(e){if(e.target===el.exportModal)closeModal(el.exportModal);});
+  el.importLookaheadBtn.addEventListener("click",function(){el.importLookaheadFile.click();});
+  el.importLookaheadFile.addEventListener("change",function(){
+    var f=this.files&&this.files[0];this.value="";if(!f)return;
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});openImportPreview(wb);}
+      catch(err){toast("Couldn't read that file — is it a valid .xlsx?");}
+    };
+    reader.readAsArrayBuffer(f);
+  });
+  el.importSheetSelect.addEventListener("change",runImportParse);
+  el.importClose.addEventListener("click",function(){closeModal(el.importModal);});el.importCancel.addEventListener("click",function(){closeModal(el.importModal);});el.importConfirm.addEventListener("click",confirmImport);el.importModal.addEventListener("mousedown",function(e){if(e.target===el.importModal)closeModal(el.importModal);});
   el.calendarScroll.addEventListener("scroll",function(){if(view!=="month"||labelTick)return;labelTick=true;requestAnimationFrame(function(){labelTick=false;updateMonthLabel();});});
 
   recomputeSchedule();
