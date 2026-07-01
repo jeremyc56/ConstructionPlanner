@@ -838,7 +838,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function fillDayTasks(cell,key,dow,opts){
     var listWrap=document.createElement("div");listWrap.className="day-tasks";
-    var entries=(opts.map[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||a.task.start.localeCompare(b.task.start)||a.task.name.localeCompare(b.task.name);});
+    var entries=(opts.map[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||a.task.start.localeCompare(b.task.start)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);});
     var cap=opts.cap||entries.length;var visible=entries.slice(0,cap);
     visible.forEach(function(en){listWrap.appendChild(buildChip(en,dow,opts.rich));});
     var addBtn=document.createElement("button");addBtn.className="day-add";addBtn.type="button";addBtn.title="Add task";addBtn.textContent="+";(function(k){addBtn.addEventListener("click",function(e){e.stopPropagation();openCreate(k);});})(key);listWrap.appendChild(addBtn);
@@ -868,7 +868,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     head.innerHTML='<div><h2>'+fmtLong(cursor)+'</h2><div class="sub">'+(hol?((hol.ph?('🟠 '+esc(hol.ph)):"")+(hol.rdo?(' 🟣 RDO — '+esc(hol.rdo)):"")):"")+(wxTxt?('<div>'+wxTxt+'</div>'):"")+'</div></div>';
     var b=document.createElement("button");b.className="btn-ghost";b.textContent="Open day list";b.addEventListener("click",function(){openDayModal(key);});head.appendChild(b);wrap.appendChild(head);
     var list=document.createElement("div");list.className="dv-list";
-    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(function(a,b){return (b.isStart-a.isStart)||a.task.name.localeCompare(b.task.name);});
+    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);});
     if(!entries.length){var e=document.createElement("div");e.className="day-empty";e.textContent="No tasks scheduled. Drag an item onto this day in Month or Week view.";list.appendChild(e);}
     entries.forEach(function(en){var t=en.task,dim=filterActive()&&!matchTask(t);var row=document.createElement("div");row.className="dv-row";row.style.setProperty("--c",t.color);if(dim)row.style.opacity=".3";
       var meta=statusLabel(t.status)+(en.dur>1?(" · day "+(en.dayIndex+1)+" of "+en.dur):"")+(t.crew?(" · "+esc(t.crew)):"")+(t.zone?(" · "+esc(t.zone)):"")+(t.deps&&t.deps.length?(" · ⛓ "+t.deps.length+" dep"):"");
@@ -970,10 +970,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function pasteWeek(targetWeekStartKey){
     if(!weekClipboard||!weekClipboard.tasks.length){toast("Clipboard is empty — Cut or Copy a week first.");return;}
-    var idMap={};
+    var idMap={};var base=nextSortOrder(),counter=0;
     var added=weekClipboard.tasks.map(function(pt){
-      var nt=Object.assign({},pt);delete nt.dayOffset;
-      nt.id=uid();nt.projectId=state.activeProject;nt.start=ymd(addDays(parseYmd(targetWeekStartKey),pt.dayOffset));nt.sortOrder=nextSortOrder();
+      var nt=Object.assign({},pt);delete nt.dayOffset;counter++;
+      nt.id=uid();nt.projectId=state.activeProject;nt.start=ymd(addDays(parseYmd(targetWeekStartKey),pt.dayOffset));nt.sortOrder=base+counter;
       idMap[pt.id]=nt.id;
       return nt;
     });
@@ -1087,7 +1087,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   /* ---------- day modal ---------- */
   function openDayModal(key){
     var d=parseYmd(key);el.dayModalTitle.textContent=d.getDate()+" "+MONTHS[d.getMonth()];var hol=holidayFor(key);el.dayModalSub.textContent=fmtLong(d)+(hol?((hol.ph?(" · "+hol.ph):"")+(hol.rdo?(" · RDO: "+hol.rdo):"")):"");
-    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(function(a,b){return (b.isStart-a.isStart)||a.task.name.localeCompare(b.task.name);});el.dayList.innerHTML="";
+    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);});el.dayList.innerHTML="";
     if(!entries.length){var e=document.createElement("div");e.className="day-empty";e.textContent="No tasks scheduled.";el.dayList.appendChild(e);}
     entries.forEach(function(en){var t=en.task,row=document.createElement("div");row.className="day-row";row.style.setProperty("--row-color",t.color);var meta=statusLabel(t.status)+" · "+coerceProgress(t.progress)+"%"+(en.dur>1?(" · day "+(en.dayIndex+1)+"/"+en.dur):"")+(t.crew?(" · "+esc(t.crew)):"");row.innerHTML='<span style="width:11px;height:11px;border-radius:3px;flex:none;background:'+t.color+'"></span><span style="flex:1"><span class="row-name">'+esc(t.name)+'</span><br><span class="row-meta">'+meta+'</span></span>';row.addEventListener("click",function(){closeModal(el.dayModal);openEditor(t.id,null);});el.dayList.appendChild(row);});
     openModal(el.dayModal,el.dayModalClose);
@@ -1305,7 +1305,9 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var removed=existingInRange(p.rangeStart,p.rangeEnd);
     var removedIds={};removed.forEach(function(t){removedIds[t.id]=1;});
     var kept=state.tasks.filter(function(t){return !removedIds[t.id];});
-    var added=p.tasks.map(function(pt){return {id:uid(),projectId:state.activeProject,name:pt.name,color:zoneColorFor(pt.zone,0,importZoneColors),start:pt.start,duration:pt.duration,status:"planned",crew:"",zone:pt.zone,notes:"",progress:0,deps:[],sortOrder:nextSortOrder(),source:"import",importedAt:Date.now()};});
+    var zoneRank={};p.zones.forEach(function(z,i){zoneRank[z]=i;});
+    var base=nextSortOrder(),counter=0;
+    var added=p.tasks.map(function(pt){counter++;return {id:uid(),projectId:state.activeProject,name:pt.name,color:zoneColorFor(pt.zone,0,importZoneColors),start:pt.start,duration:pt.duration,status:"planned",crew:"",zone:pt.zone,notes:"",progress:0,deps:[],sortOrder:base+zoneRank[pt.zone]*100000+counter,source:"import",importedAt:Date.now()};});
     state.tasks=kept.concat(added);
     recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.importModal);
     var addedIds={};added.forEach(function(t){addedIds[t.id]=1;});
