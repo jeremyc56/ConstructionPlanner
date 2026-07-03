@@ -220,6 +220,10 @@ select.text-input{appearance:none;-webkit-appearance:none;cursor:pointer;backgro
 .import-summary{display:flex;flex-direction:column;gap:6px;margin-top:8px;font-size:13px;color:var(--text-2);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;}
 .import-summary b{color:var(--text);}
 .import-removed-item{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-2);}
+.ai-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+.ai-out{margin-top:10px;font-size:12.5px;line-height:1.55;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto;color:var(--text);}
+.ai-out.loading{color:var(--text-mut);font-style:italic;}
+.ai-actions{display:flex;gap:8px;margin-top:8px;}
 @keyframes fade{from{opacity:0;}}
 @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98);}}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border);}
@@ -310,11 +314,12 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   .toolbar select{font-size:11.5px;padding:6px 22px 6px 7px;}
 
   /* Day grid – compact month cells */
-  .weekdays{gap:3px;}
+  .weekdays{gap:3px;grid-template-columns:repeat(7,1fr) 18px;}
   .weekdays span{font-size:9px;letter-spacing:.2px;padding-left:2px;}
-  .grid{gap:3px;}
-  .grid.month{grid-auto-rows:68px;}
-  .day{padding:4px 3px;border-radius:7px;}
+  .grid{gap:3px;grid-template-columns:repeat(7,1fr) 18px;}
+  .grid.day{grid-template-columns:1fr;}
+  .grid.month{grid-auto-rows:auto;}
+  .day{padding:4px 3px;border-radius:7px;min-height:68px;}
   .day-head{margin-bottom:2px;}
   .day-num{font-size:11px;min-width:18px;height:18px;}
   .day.today .day-num{font-size:10px;}
@@ -457,6 +462,26 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
           <input type="file" id="importLookaheadFile" accept=".xlsx,.xls" hidden />
         </section>
 
+        <section class="card" id="aiSection">
+          <h2 class="panel-heading">AI Assistant</h2>
+          <div class="ai-quick">
+            <button class="btn-sm" id="aiSummaryBtn">Week summary</button>
+            <button class="btn-sm" id="aiRiskBtn">Weather risks</button>
+          </div>
+          <label class="field-label" for="aiInput">Ask a question, or describe tasks to add</label>
+          <textarea id="aiInput" class="text-input" rows="2" maxlength="2000" placeholder="e.g. Add kerb pour in M1 next Tuesday for 2 days"></textarea>
+          <div class="ai-quick" style="margin-top:8px;">
+            <button class="btn-sm" id="aiAskBtn">Ask AI</button>
+            <button class="btn-sm" id="aiTasksBtn">Draft tasks</button>
+          </div>
+          <div class="ai-out" id="aiOut" hidden></div>
+          <div class="ai-actions" id="aiOutActions" hidden>
+            <button class="btn-sm" id="aiCopyBtn">Copy</button>
+            <button class="btn-sm" id="aiAddTasksBtn" hidden>Add tasks</button>
+          </div>
+          <p class="hint" id="aiHint" hidden></p>
+        </section>
+
         <section class="card">
           <h2 class="panel-heading">Shared Calendar</h2>
           <label class="field-label" for="sharedName">Your name (shown to the team on save)</label>
@@ -587,7 +612,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   var AUTH_PASS="Intrepid77";
   var DAY_MS=86400000;
   function isAuthed(){try{var s=JSON.parse(localStorage.getItem(AUTH_KEY)||"{}");return s.ts&&(Date.now()-s.ts)<DAY_MS;}catch(e){return false;}}
-  function storeAuth(name){localStorage.setItem(AUTH_KEY,JSON.stringify({ts:Date.now(),name:name}));}
+  function storeAuth(name){try{localStorage.setItem(AUTH_KEY,JSON.stringify({ts:Date.now(),name:name}));}catch(e){}}
   function getAuthName(){try{var s=JSON.parse(localStorage.getItem(AUTH_KEY)||"{}");return s.name||"";}catch(e){return "";}}
   function initials(n){var parts=(n||"").trim().split(/\s+/).filter(Boolean);if(!parts.length)return"?";return(parts[0][0]+(parts.length>1?parts[parts.length-1][0]:"")).toUpperCase();}
   function updateTopbar(name){
@@ -655,7 +680,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   var state=load();
   var today=new Date();today.setHours(0,0,0,0);
-  var YEAR=2026,YEAR_START=new Date(YEAR,0,1),YEAR_END=new Date(YEAR,11,31);
+  var YEAR=Math.min(2027,Math.max(2025,today.getFullYear())),YEAR_START=new Date(YEAR,0,1),YEAR_END=new Date(YEAR,11,31);
   function clampToYear(d){return d<YEAR_START?new Date(YEAR_START):(d>YEAR_END?new Date(YEAR_END):d);}
   var cursor=clampToYear(new Date(today));
   var view="month";
@@ -679,7 +704,8 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
    "exportModal","exportClose","exportCancel","exportGo","expStart","expEnd","toast",
    "importLookaheadBtn","importLookaheadFile","importModal","importClose","importSub","importSheetRow","importSheetSelect",
    "importRangeRow","importFrom","importTo",
-   "importZones","importSummary","importRemovedWrap","importRemovedList","importSkippedWrap","importSkippedHint","importCancel","importConfirm"
+   "importZones","importSummary","importRemovedWrap","importRemovedList","importSkippedWrap","importSkippedHint","importCancel","importConfirm",
+   "aiSummaryBtn","aiRiskBtn","aiInput","aiAskBtn","aiTasksBtn","aiOut","aiOutActions","aiCopyBtn","aiAddTasksBtn","aiHint"
   ].forEach(function(id){el[id]=document.getElementById(id);});
 
   function coerceDuration(v){var n=parseInt(v,10);return Math.min(365,Math.max(1,isNaN(n)?1:n));}
@@ -694,7 +720,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     return {id:t.id||uid(),projectId:t.projectId||pid,name:name,color:coerceColor(t.color),start:t.start,
       duration:coerceDuration(t.duration),status:coerceStatus(t.status),crew:String(t.crew==null?"":t.crew).slice(0,120),
       zone:String(t.zone==null?"":t.zone).slice(0,120),notes:String(t.notes==null?"":t.notes).slice(0,500),
-      progress:coerceProgress(t.progress),deps:Array.isArray(t.deps)?t.deps.filter(function(x){return typeof x==="string";}):[],libId:t.libId||null};
+      progress:coerceProgress(t.progress),deps:Array.isArray(t.deps)?t.deps.filter(function(x){return typeof x==="string";}):[],libId:t.libId||null,
+      sortOrder:(typeof t.sortOrder==="number"&&isFinite(t.sortOrder))?t.sortOrder:0,
+      source:(typeof t.source==="string")?t.source.slice(0,20):null,
+      importedAt:(typeof t.importedAt==="number")?t.importedAt:null};
   }
   function sanitizeLib(i){if(!i||typeof i!=="object")return null;var name=String(i.name==null?"":i.name).slice(0,120).trim();if(!name)return null;return {id:i.id||uid(),name:name,color:coerceColor(i.color)};}
 
@@ -707,6 +736,8 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
         var active=p.activeProject&&projects.some(function(pr){return pr.id===p.activeProject;})?p.activeProject:projects[0].id;
         var lib=(Array.isArray(p.library)?p.library:[]).map(sanitizeLib).filter(Boolean);
         var tasks=(Array.isArray(p.tasks)?p.tasks:[]).map(function(t){return sanitizeTask(t,active);}).filter(Boolean);
+        var ids={};tasks.forEach(function(t){ids[t.id]=1;});
+        tasks.forEach(function(t){if(t.deps&&t.deps.length)t.deps=t.deps.filter(function(d){return ids[d];});});
         return {projects:projects,activeProject:active,library:lib,tasks:tasks,settings:(p.settings&&typeof p.settings==="object")?p.settings:{},meta:(p.meta&&typeof p.meta==="object")?p.meta:{}};
       }
       var old=localStorage.getItem(OLD_KEY);
@@ -744,7 +775,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     el.toast.innerHTML="";var span=document.createElement("span");span.textContent=msg;el.toast.appendChild(span);
     if(actionLabel&&actionFn){var b=document.createElement("button");b.className="toast-action";b.textContent=actionLabel;b.addEventListener("click",function(){actionFn();hideToast();});el.toast.appendChild(b);}
     el.toast.hidden=false;requestAnimationFrame(function(){el.toast.classList.add("show");});
-    clearTimeout(toast._t);toast._t=setTimeout(hideToast,actionLabel?5000:2200);
+    clearTimeout(toast._t);toast._t=setTimeout(hideToast,actionLabel?7000:2200);
   }
   function hideToast(){el.toast.classList.remove("show");setTimeout(function(){el.toast.hidden=true;},220);}
 
@@ -789,9 +820,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   function filterActive(){return !!(filter.q||filter.status||filter.crew||filter.color);}
 
   /* ---------- dependencies ---------- */
-  function recomputeSchedule(){var by={};tasksForProject().forEach(function(t){by[t.id]=t;});for(var iter=0;iter<300;iter++){var changed=false;tasksForProject().forEach(function(t){if(t.deps&&t.deps.length){var minStart=null;t.deps.forEach(function(pid){var p=by[pid];if(p){var s=ymd(addDays(parseYmd(p.start),coerceDuration(p.duration)));if(minStart===null||s>minStart)minStart=s;}});if(minStart&&t.start<minStart){t.start=minStart;changed=true;}}});if(!changed)break;}}
+  function recomputeSchedule(){var by={};tasksForProject().forEach(function(t){by[t.id]=t;});for(var iter=0;iter<60;iter++){var changed=false;tasksForProject().forEach(function(t){if(t.deps&&t.deps.length){var minStart=null;t.deps.forEach(function(pid){var p=by[pid];if(p){var s=ymd(addDays(parseYmd(p.start),coerceDuration(p.duration)));if(minStart===null||s>minStart)minStart=s;}});if(minStart&&t.start<minStart){t.start=minStart;changed=true;}}});if(!changed)break;}}
 
   function tasksByDate(startKey,endKey){var map={};tasksForProject().forEach(function(t){var start=parseYmd(t.start),dur=coerceDuration(t.duration);for(var i=0;i<dur;i++){var key=ymd(addDays(start,i));if(key<startKey||key>endKey)continue;(map[key]=map[key]||[]).push({task:t,isStart:i===0,isEnd:i===dur-1,dayIndex:i,dur:dur});}});return map;}
+  function entryCompare(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||a.task.start.localeCompare(b.task.start)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);}
 
   /* ---------- weather ---------- */
   function updateWeatherUI(){var s=state.settings;if(s&&s.label){el.suburbInput.value=s.suburb||"";el.weatherStatus.textContent="📍 "+s.label+" — actual weather on past dates, 16-day forecast ahead.";}else el.weatherStatus.textContent="No location set — start typing a suburb for site weather (history + forecast).";}
@@ -821,9 +853,12 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   /* ---------- render ---------- */
   function renderCalendar(){
+    closeWeekPop();
+    var st=el.calendarScroll.scrollTop;
     el.calGrid.className="grid "+view;el.weekdays.style.display=(view==="day")?"none":"grid";
     if(view==="month")renderMonth();else if(view==="week")renderWeek();else renderDay();
     renderProgress();
+    el.calendarScroll.scrollTop=st;
   }
   function makeDayCell(date,opts){
     opts=opts||{};var key=ymd(date),inMonth=opts.inMonth!==false,dow=(date.getDay()+6)%7,hol=holidayFor(key),first=date.getDate()===1;
@@ -845,10 +880,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function fillDayTasks(cell,key,dow,opts){
     var listWrap=document.createElement("div");listWrap.className="day-tasks";
-    var entries=(opts.map[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||a.task.start.localeCompare(b.task.start)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);});
+    var entries=(opts.map[key]||[]).slice().sort(entryCompare);
     var cap=opts.cap||entries.length;var visible=entries.slice(0,cap);
     visible.forEach(function(en){listWrap.appendChild(buildChip(en,dow,opts.rich));});
-    var addBtn=document.createElement("button");addBtn.className="day-add";addBtn.type="button";addBtn.title="Add task";addBtn.textContent="+";(function(k){addBtn.addEventListener("click",function(e){e.stopPropagation();openCreate(k);});})(key);listWrap.appendChild(addBtn);
+    var addBtn=document.createElement("button");addBtn.className="day-add";addBtn.type="button";addBtn.title="Add task";addBtn.setAttribute("aria-label","Add task on "+key);addBtn.textContent="+";(function(k){addBtn.addEventListener("click",function(e){e.stopPropagation();openCreate(k);});})(key);listWrap.appendChild(addBtn);
     cell.appendChild(listWrap);
     if(opts.cap&&entries.length>cap){var seen={};visible.forEach(function(en){seen[en.task.id]=1;});var hidden={};entries.slice(cap).forEach(function(en){if(!seen[en.task.id])hidden[en.task.id]=1;});var hc=Object.keys(hidden).length;if(hc>0){var more=document.createElement("button");more.className="day-overflow";more.type="button";more.textContent="+"+hc+" more";more.dataset.date=key;more.addEventListener("click",function(ev){ev.stopPropagation();openDayModal(this.dataset.date);});cell.appendChild(more);}}
   }
@@ -875,7 +910,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     head.innerHTML='<div><h2>'+fmtLong(cursor)+'</h2><div class="sub">'+(hol?((hol.ph?('🟠 '+esc(hol.ph)):"")+(hol.rdo?(' 🟣 RDO — '+esc(hol.rdo)):"")):"")+(wxTxt?('<div>'+wxTxt+'</div>'):"")+'</div></div>';
     var b=document.createElement("button");b.className="btn-ghost";b.textContent="Open day list";b.addEventListener("click",function(){openDayModal(key);});head.appendChild(b);wrap.appendChild(head);
     var list=document.createElement("div");list.className="dv-list";
-    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);});
+    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(entryCompare);
     if(!entries.length){var e=document.createElement("div");e.className="day-empty";e.textContent="No tasks scheduled. Drag an item onto this day in Month or Week view.";list.appendChild(e);}
     entries.forEach(function(en){var t=en.task,dim=filterActive()&&!matchTask(t);var row=document.createElement("div");row.className="dv-row";row.style.setProperty("--c",t.color);if(dim)row.style.opacity=".3";
       var meta=statusLabel(t.status)+(en.dur>1?(" · day "+(en.dayIndex+1)+" of "+en.dur):"")+(t.crew?(" · "+esc(t.crew)):"")+(t.zone?(" · "+esc(t.zone)):"")+(t.deps&&t.deps.length?(" · ⛓ "+t.deps.length+" dep"):"");
@@ -1008,12 +1043,13 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var ans=window.prompt("Shift this week's "+ts.length+" task(s) by how many days? (e.g. 7 to move forward a week, -7 to move back)","7");
     if(ans==null)return;
     var n=parseInt(ans,10);if(isNaN(n)||n===0){toast("Enter a non-zero number of days.");return;}
-    var prevStarts={};ts.forEach(function(t){prevStarts[t.id]=t.start;});
+    /* snapshot every task's start — recomputeSchedule can push dependents outside this week */
+    var prevStarts={};tasksForProject().forEach(function(t){prevStarts[t.id]=t.start;});
     ts.forEach(function(t){t.start=ymd(addDays(parseYmd(t.start),n));});
     recomputeSchedule();save();refreshFilters();renderCalendar();
     toast("Shifted "+ts.length+" task"+(ts.length===1?"":"s")+" by "+n+" day"+(Math.abs(n)===1?"":"s"),"Undo",function(){
-      ts.forEach(function(t){if(prevStarts[t.id])t.start=prevStarts[t.id];});
-      recomputeSchedule();save();refreshFilters();renderCalendar();
+      tasksForProject().forEach(function(t){if(prevStarts[t.id])t.start=prevStarts[t.id];});
+      save();refreshFilters();renderCalendar();
     });
   }
   function deleteWeek(weekStartKey){
@@ -1062,18 +1098,31 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     if(!d.moved){if(d.kind==="task")openEditor(d.id,d.chip);return;}
     var cell=cellUnder(e);if(!cell||!cell.dataset.date)return;performDrop(d.kind,d.id,d.dayIndex,cell.dataset.date,d.reorderTargetId,d.reorderBefore);
   }
+  window.addEventListener("blur",function(){
+    if(!drag)return;
+    document.removeEventListener("mousemove",dragMove);document.removeEventListener("mouseup",dragUp);
+    document.body.style.cursor="";clearTargets();
+    if(drag.ghost)drag.ghost.remove();if(drag.chip)drag.chip.style.opacity="";
+    drag=null;
+  });
   function nextSortOrder(){var mx=0;tasksForProject().forEach(function(t){if((t.sortOrder||0)>mx)mx=t.sortOrder||0;});return mx+100;}
   function reorderOnDay(taskId,dateKey,targetId,before){
-    var all=tasksForProject().filter(function(t){return covers(t,dateKey);});
-    all.sort(function(a,b){return (a.sortOrder||0)-(b.sortOrder||0);});
-    var dragged=null;for(var i=0;i<all.length;i++){if(all[i].id===taskId){dragged=all[i];break;}}
+    /* order the day exactly as it is displayed, then give the dragged task a
+       sortOrder between its new neighbours so no other task's order changes */
+    var entries=(tasksByDate(dateKey,dateKey)[dateKey]||[]).slice().sort(entryCompare);
+    var ordered=entries.map(function(en){return en.task;});
+    var dragged=null;for(var i=0;i<ordered.length;i++){if(ordered[i].id===taskId){dragged=ordered[i];break;}}
     if(!dragged)return;
-    var others=all.filter(function(t){return t.id!==taskId;});
+    var others=ordered.filter(function(t){return t.id!==taskId;});
     var targetIdx=-1;for(var i=0;i<others.length;i++){if(others[i].id===targetId){targetIdx=i;break;}}
     if(targetIdx<0)return;
     var insertIdx=before?targetIdx:targetIdx+1;
-    others.splice(insertIdx,0,dragged);
-    others.forEach(function(t,i){t.sortOrder=(i+1)*100;});
+    var prev=insertIdx>0?others[insertIdx-1]:null,next=insertIdx<others.length?others[insertIdx]:null;
+    var ps=prev?(prev.sortOrder||0):null,nsv=next?(next.sortOrder||0):null;
+    if(prev&&next&&(nsv-ps)>1e-6)dragged.sortOrder=ps+(nsv-ps)/2;
+    else if(!prev&&next)dragged.sortOrder=nsv-100;
+    else if(prev&&!next)dragged.sortOrder=ps+100;
+    else{others.splice(insertIdx,0,dragged);others.forEach(function(t,i2){t.sortOrder=(i2+1)*100;});}
   }
   function performDrop(kind,id,dayIndex,dateKey,reorderTargetId,reorderBefore){
     if(kind==="lib"){var item=state.library.filter(function(l){return l.id===id;})[0];if(!item)return;state.tasks.push({id:uid(),projectId:state.activeProject,name:item.name,color:item.color,start:dateKey,duration:1,status:"planned",crew:"",zone:"",notes:"",progress:0,deps:[],libId:item.id,sortOrder:nextSortOrder()});save();refreshFilters();renderCalendar();}
@@ -1104,7 +1153,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   /* ---------- day modal ---------- */
   function openDayModal(key){
     var d=parseYmd(key);el.dayModalTitle.textContent=d.getDate()+" "+MONTHS[d.getMonth()];var hol=holidayFor(key);el.dayModalSub.textContent=fmtLong(d)+(hol?((hol.ph?(" · "+hol.ph):"")+(hol.rdo?(" · RDO: "+hol.rdo):"")):"");
-    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(function(a,b){var so=(a.task.sortOrder||0)-(b.task.sortOrder||0);return so!==0?so:(b.isStart-a.isStart)||zoneOf(a.task).localeCompare(zoneOf(b.task))||a.task.name.localeCompare(b.task.name);});el.dayList.innerHTML="";
+    var entries=(tasksByDate(key,key)[key]||[]).slice().sort(entryCompare);el.dayList.innerHTML="";
     if(!entries.length){var e=document.createElement("div");e.className="day-empty";e.textContent="No tasks scheduled.";el.dayList.appendChild(e);}
     entries.forEach(function(en){var t=en.task,row=document.createElement("div");row.className="day-row";row.style.setProperty("--row-color",t.color);var meta=statusLabel(t.status)+" · "+coerceProgress(t.progress)+"%"+(en.dur>1?(" · day "+(en.dayIndex+1)+"/"+en.dur):"")+(t.crew?(" · "+esc(t.crew)):"");row.innerHTML='<span style="width:11px;height:11px;border-radius:3px;flex:none;background:'+t.color+'"></span><span style="flex:1"><span class="row-name">'+esc(t.name)+'</span><br><span class="row-meta">'+meta+'</span></span>';row.addEventListener("click",function(){closeModal(el.dayModal);openEditor(t.id,null);});el.dayList.appendChild(row);});
     openModal(el.dayModal,el.dayModalClose);
@@ -1152,8 +1201,13 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var t=state.tasks.filter(function(x){return x.id===editingId;})[0];if(!t){closeModal(el.modal);return;}
     var name=el.editName.value.trim();if(!name){el.editName.focus();toast("Task needs a name.");return;}if(!validStart(el.editStart.value)){el.editStart.focus();toast("Enter a valid start date.");return;}
     t.name=name;t.start=el.editStart.value;t.duration=coerceDuration(el.editDuration.value);t.status=coerceStatus(el.editStatus.value);t.crew=el.editCrew.value.trim();t.zone=el.editZone.value.trim();t.notes=el.editNotes.value.trim();t.color=editColor;t.progress=coerceProgress(el.editProgress.value);
-    var deps=[];Array.prototype.forEach.call(el.editDeps.querySelectorAll("input[type=checkbox]"),function(cb){if(cb.checked)deps.push(cb.value);});t.deps=deps.filter(function(id){return id!==t.id;});
-    recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.modal);toast("Task updated");
+    var deps=[];Array.prototype.forEach.call(el.editDeps.querySelectorAll("input[type=checkbox]"),function(cb){if(cb.checked)deps.push(cb.value);});
+    var byId={};tasksForProject().forEach(function(o){byId[o.id]=o;});
+    function depReaches(fromId,targetId){var stack=[fromId],seen={};while(stack.length){var cur=stack.pop();if(cur===targetId)return true;if(seen[cur])continue;seen[cur]=1;var o=byId[cur];if(o&&o.deps)for(var i=0;i<o.deps.length;i++)stack.push(o.deps[i]);}return false;}
+    var dropped=0;
+    t.deps=deps.filter(function(id){if(id===t.id)return false;if(depReaches(id,t.id)){dropped++;return false;}return true;});
+    recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.modal);
+    toast(dropped?("Task updated — removed "+dropped+" circular dependenc"+(dropped===1?"y":"ies")):"Task updated");
   }
   function deleteTask(){var idx=-1,t=null;for(var i=0;i<state.tasks.length;i++){if(state.tasks[i].id===editingId){idx=i;t=state.tasks[i];break;}}if(!t){closeModal(el.modal);return;}state.tasks.splice(idx,1);state.tasks.forEach(function(o){if(o.deps&&o.deps.length)o.deps=o.deps.filter(function(id){return id!==t.id;});});recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.modal);toast('"'+t.name+'" deleted',"Undo",function(){state.tasks.splice(Math.min(idx,state.tasks.length),0,t);recomputeSchedule();save();refreshFilters();renderCalendar();});}
 
@@ -1169,7 +1223,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   function runExport(){
     if(!validStart(el.expStart.value)||!validStart(el.expEnd.value)){toast("Pick valid From and To dates.");return;}
     var start=mondayOf(parseYmd(el.expStart.value)),end=parseYmd(el.expEnd.value);if(end<start){toast("‘To’ must be after ‘From’.");return;}
-    var ts=tasksForProject();var zones=[],zseen={};ts.forEach(function(t){var z=zoneOf(t);if(!zseen[z]){zseen[z]=1;zones.push(z);}});if(!zones.length)zones=["General Works"];zones.sort(function(a,b){if(a==="General Works")return 1;if(b==="General Works")return -1;return a.localeCompare(b);});
+    var ts=tasksForProject();
+    var sKey=ymd(start),eKey=ymd(end);
+    var tsWin=ts.filter(function(t){return t.start<=eKey&&endDate(t)>=sKey;});
+    var zones=[],zseen={};tsWin.forEach(function(t){var z=zoneOf(t);if(!zseen[z]){zseen[z]=1;zones.push(z);}});if(!zones.length)zones=["General Works"];zones.sort(function(a,b){if(a==="General Works")return 1;if(b==="General Works")return -1;return a.localeCompare(b);});
     var pj=state.projects.filter(function(x){return x.id===state.activeProject;})[0];var pname=pj?pj.name:"Project";
     var H='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>';
     H+='<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:Calibri,Arial;font-size:11pt;table-layout:fixed;">';
@@ -1207,17 +1264,79 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function isContLine(line){return /^cont(inued?)?\.?$/i.test(line.trim());}
   function isHeadingLine(s){return /^[A-Za-z][A-Za-z ]{1,20}$/.test(s)&&!SKIP_LINES[s.toUpperCase()]&&!isContLine(s);}
+  function decodeEnt(s){return s.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&nbsp;/g," ");}
+  var MON_IDX={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function parseTextDate(v){
+    if(typeof v!=="string")return null;
+    var m=v.match(/(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})/i);
+    if(!m)return null;
+    var d=new Date(+m[3],MON_IDX[m[2].slice(0,3).toLowerCase()],+m[1]);
+    return isNaN(d.getTime())?null:ymd(d);
+  }
+  function ascendingDayHeader(cols){
+    /* a real date-header row ascends left-to-right in steps of 1-4 days */
+    var keys=Object.keys(cols).sort(function(a,b){return a-b;});
+    for(var i=1;i<keys.length;i++){
+      var diff=(parseYmd(cols[keys[i]])-parseYmd(cols[keys[i-1]]))/86400000;
+      if(!(diff>=1&&diff<=4))return false;
+    }
+    return true;
+  }
+  function cellLines(ws,sheetR,sheetC,rawValue,skippedRef){
+    /* Prefer SheetJS's per-cell HTML: fully-bold lines are group headings
+       (e.g. CARPARK / Drainage) when the cell also has non-bold task lines. */
+    var cellObj=ws[XLSX.utils.encode_cell({r:sheetR,c:sheetC})];
+    var h=cellObj&&cellObj.h;
+    if(typeof h==="string"&&/<b[\s>]/i.test(h)){
+      var parts=h.split(/<br\s*\/?>/i),parsed=[],anyPlain=false;
+      for(var i=0;i<parts.length;i++){
+        var seg=parts[i];
+        var text=decodeEnt(seg.replace(/<[^>]*>/g,"")).replace(/[\t]+/g," ").trim();
+        if(!text)continue;
+        var boldText="",bm,bre=/<b[^>]*>([\s\S]*?)<\/b>/gi;
+        while((bm=bre.exec(seg)))boldText+=bm[1];
+        boldText=decodeEnt(boldText.replace(/<[^>]*>/g,"")).replace(/[\t]+/g," ").trim();
+        var bold=!!boldText&&boldText===text;
+        if(!bold)anyPlain=true;
+        parsed.push({text:text,bold:bold});
+      }
+      var out=[];
+      parsed.forEach(function(p){
+        if(p.bold&&anyPlain){skippedRef.n++;return;} /* bold heading above its plain task lines */
+        out.push(p.text);
+      });
+      return out;
+    }
+    /* Fallback (no formatting info): blank-line blocks whose first line is a
+       short plain word are treated as headings. */
+    var rawLines=String(rawValue).split(/\r\n|\r|\n/).map(function(l){return l.replace(/[\t]+/g," ").trim();});
+    var blocks=[],curBlock=[];
+    rawLines.forEach(function(l){if(l===""){if(curBlock.length){blocks.push(curBlock);curBlock=[];}}else curBlock.push(l);});
+    if(curBlock.length)blocks.push(curBlock);
+    var lines=[];
+    blocks.forEach(function(block){
+      if(block.length>1&&isHeadingLine(block[0])){skippedRef.n++;lines=lines.concat(block.slice(1));}
+      else lines=lines.concat(block);
+    });
+    return lines;
+  }
   function parseLookaheadSheet(ws){
     var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
+    var range=null;try{range=XLSX.utils.decode_range(ws["!ref"]||"A1");}catch(e){}
+    var rOff=range?range.s.r:0,cOff=range?range.s.c:0;
     var dateCols=null; /* {colIndex: "yyyy-mm-dd"} for the block currently being read */
     var raw=[]; /* {zone,date,name} */
-    var skipped=0;
+    var skippedRef={n:0};
     var lastLinesByZone={};
     for(var r=0;r<rows.length;r++){
       var row=rows[r]||[];
-      var serialCols={};var serialCount=0;
-      for(var c=1;c<row.length;c++){if(looksLikeDateSerial(row[c])){serialCols[c]=ymd(excelSerialToDate(row[c]));serialCount++;}}
-      if(serialCount>=2){dateCols=serialCols;continue;}
+      var serialCols={},serialCount=0,strCols={},strCount=0;
+      for(var c=1;c<row.length;c++){
+        if(looksLikeDateSerial(row[c])){serialCols[c]=ymd(excelSerialToDate(row[c]));serialCount++;}
+        else{var td=parseTextDate(row[c]);if(td){strCols[c]=td;strCount++;}}
+      }
+      if(serialCount>=2&&ascendingDayHeader(serialCols)){dateCols=serialCols;continue;}
+      if(strCount>=2&&ascendingDayHeader(strCols)){dateCols=strCols;continue;}
       if(!dateCols)continue;
       var zoneCell=row[0];
       if(zoneCell==null||String(zoneCell).trim()==="")continue;
@@ -1226,24 +1345,17 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
       var cols=Object.keys(dateCols).sort(function(a,b){return a-b;});
       cols.forEach(function(c){
         var cell=row[c];if(cell==null||String(cell).trim()===""){return;}
-        var rawLines=String(cell).split(/\r\n|\r|\n/).map(function(l){return l.replace(/[\t]+/g," ").trim();});
-        var blocks=[],curBlock=[];
-        rawLines.forEach(function(l){if(l===""){if(curBlock.length){blocks.push(curBlock);curBlock=[];}}else curBlock.push(l);});
-        if(curBlock.length)blocks.push(curBlock);
-        var lines=[];
-        blocks.forEach(function(block){
-          if(block.length>1&&isHeadingLine(block[0])){skipped++;lines=lines.concat(block.slice(1));}
-          else lines=lines.concat(block);
-        });
+        var lines=cellLines(ws,r+rOff,(+c)+cOff,cell,skippedRef);
         var resolved=[];
         lines.forEach(function(line,li){
           var up=line.toUpperCase();
-          if(SKIP_LINES[up]){skipped++;return;}
+          if(SKIP_LINES[up]){skippedRef.n++;return;}
+          if(/^\d+(\.\d+)?$/.test(line)){skippedRef.n++;return;}
           if(isContLine(line)){
             var prev=lastLinesByZone[zone]||[];
             if(lines.length===1&&prev.length){resolved=resolved.concat(prev);}
             else if(prev[li]){resolved.push(prev[li]);}
-            else{skipped++;}
+            else{skippedRef.n++;}
             return;
           }
           resolved.push(line);
@@ -1252,6 +1364,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
         if(resolved.length)lastLinesByZone[zone]=resolved;
       });
     }
+    var skipped=skippedRef.n;
     /* merge identical consecutive-day tasks within the same zone into a single spanning task */
     var byZone={};raw.forEach(function(e){(byZone[e.zone]=byZone[e.zone]||[]).push(e);});
     var tasks=[];
@@ -1275,8 +1388,15 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function zoneColorFor(zone,idx,overrides){return (overrides&&overrides[zone])||PALETTE[idx%PALETTE.length];}
   function filterParsedRange(full,fromKey,toKey){
-    if(fromKey>toKey){var t=fromKey;fromKey=toKey;toKey=t;}
-    var tasks=full.tasks.filter(function(t){return t.start>=fromKey&&t.start<=toKey;});
+    if(fromKey>toKey){var t0=fromKey;fromKey=toKey;toKey=t0;}
+    /* clip spans to the window instead of dropping tasks that start before it */
+    var tasks=[];
+    full.tasks.forEach(function(t){
+      var s=t.start,e=ymd(addDays(parseYmd(t.start),t.duration-1));
+      if(e<fromKey||s>toKey)return;
+      var ns=s<fromKey?fromKey:s,ne=e>toKey?toKey:e;
+      tasks.push({zone:t.zone,name:t.name,start:ns,duration:Math.round((parseYmd(ne)-parseYmd(ns))/86400000)+1});
+    });
     var seen={};var zones=[];tasks.forEach(function(t){if(!seen[t.zone]){seen[t.zone]=1;zones.push(t.zone);}});
     return {tasks:tasks,zones:zones,skipped:full.skipped,rangeStart:fromKey,rangeEnd:toKey};
   }
@@ -1322,22 +1442,31 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     });
     renderImportSummary();
   }
-  function existingInRange(startKey,endKey){
-    return tasksForProject().filter(function(t){return covers(t,startKey)||covers(t,endKey)||(t.start>=startKey&&t.start<=endKey);});
+  function importImpact(p){
+    /* removed: existing tasks starting inside the window (replaced by the sheet).
+       trimmed: tasks starting before the window that run into it — shortened, not deleted. */
+    var removed=[],trimmed=[];
+    tasksForProject().forEach(function(t){
+      if(t.start>=p.rangeStart&&t.start<=p.rangeEnd)removed.push(t);
+      else if(t.start<p.rangeStart&&endDate(t)>=p.rangeStart)trimmed.push(t);
+    });
+    return {removed:removed,trimmed:trimmed};
   }
   function renderImportSummary(){
     var p=importParsed;
-    var removed=existingInRange(p.rangeStart,p.rangeEnd);
+    var imp=importImpact(p);
     el.importSummary.innerHTML="";
     var l0=document.createElement("div");l0.innerHTML="Date range detected: <b>"+esc(fmtLong(parseYmd(p.rangeStart)))+"</b> to <b>"+esc(fmtLong(parseYmd(p.rangeEnd)))+"</b>.";el.importSummary.appendChild(l0);
     var l1=document.createElement("div");l1.innerHTML="<b>"+p.tasks.length+"</b> tasks will be imported across <b>"+p.zones.length+"</b> zone"+(p.zones.length===1?"":"s")+".";el.importSummary.appendChild(l1);
-    var l2=document.createElement("div");l2.innerHTML="<b>"+removed.length+"</b> existing task"+(removed.length===1?"":"s")+" in this date range will be replaced.";el.importSummary.appendChild(l2);
+    var l2=document.createElement("div");l2.innerHTML="<b>"+imp.removed.length+"</b> existing task"+(imp.removed.length===1?"":"s")+" starting in this range will be replaced.";el.importSummary.appendChild(l2);
+    if(imp.trimmed.length){var lt=document.createElement("div");lt.innerHTML="<b>"+imp.trimmed.length+"</b> task"+(imp.trimmed.length===1?"":"s")+" running into this range will be shortened to end beforehand.";el.importSummary.appendChild(lt);}
     if(p.skipped){var l3=document.createElement("div");l3.textContent=p.skipped+" line(s) skipped (RDO / Public Holiday / No works / TBC labels / group headings).";el.importSummary.appendChild(l3);}
-    if(removed.length){
+    if(imp.removed.length||imp.trimmed.length){
       el.importRemovedWrap.style.display="";el.importRemovedList.innerHTML="";
-      removed.slice().sort(function(a,b){return a.start.localeCompare(b.start);}).forEach(function(t){
+      var listed=imp.removed.map(function(t){return {t:t,note:""};}).concat(imp.trimmed.map(function(t){return {t:t,note:" (shortened)"};}));
+      listed.sort(function(a,b){return a.t.start.localeCompare(b.t.start);}).forEach(function(x){
         var row=document.createElement("div");row.className="import-removed-item";
-        row.innerHTML="<span>"+esc(t.name)+"</span><span>"+esc(fmtLong(parseYmd(t.start)))+"</span>";
+        row.innerHTML="<span>"+esc(x.t.name)+esc(x.note)+"</span><span>"+esc(fmtLong(parseYmd(x.t.start)))+"</span>";
         el.importRemovedList.appendChild(row);
       });
     }else{el.importRemovedWrap.style.display="none";}
@@ -1345,24 +1474,28 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   function confirmImport(){
     var p=importParsed;if(!p)return;
     if(!p.tasks.length){toast("No tasks in the selected date range.");return;}
-    var removed=existingInRange(p.rangeStart,p.rangeEnd);
+    var imp=importImpact(p);
+    var removed=imp.removed;
+    var trimmed=imp.trimmed.map(function(t){return {t:t,oldDuration:t.duration};});
     var removedIds={};removed.forEach(function(t){removedIds[t.id]=1;});
     var kept=state.tasks.filter(function(t){return !removedIds[t.id];});
+    trimmed.forEach(function(x){x.t.duration=Math.round((parseYmd(p.rangeStart)-parseYmd(x.t.start))/86400000);});
     var zoneRank={};p.zones.forEach(function(z,i){zoneRank[z]=i;});
     var base=nextSortOrder(),counter=0;
     var added=p.tasks.map(function(pt){counter++;return {id:uid(),projectId:state.activeProject,name:pt.name,color:zoneColorFor(pt.zone,0,importZoneColors),start:pt.start,duration:pt.duration,status:"planned",crew:"",zone:pt.zone,notes:"",progress:0,deps:[],sortOrder:base+zoneRank[pt.zone]*100000+counter,source:"import",importedAt:Date.now()};});
     state.tasks=kept.concat(added);
     recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.importModal);
     var addedIds={};added.forEach(function(t){addedIds[t.id]=1;});
-    toast("Imported "+added.length+" tasks, replaced "+removed.length,"Undo",function(){
+    toast("Imported "+added.length+", replaced "+removed.length+(trimmed.length?(", shortened "+trimmed.length):""),"Undo",function(){
       state.tasks=state.tasks.filter(function(t){return !addedIds[t.id];}).concat(removed);
+      trimmed.forEach(function(x){x.t.duration=x.oldDuration;});
       recomputeSchedule();save();refreshFilters();renderCalendar();
     });
   }
 
   /* ---------- backup / restore ---------- */
   function backup(){download(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),"construction-planner-backup-"+ymd(today)+".json");toast("Backup saved");}
-  function restore(file){var fr=new FileReader();fr.onload=function(){try{var p=JSON.parse(fr.result);if(!p||!Array.isArray(p.projects))throw 0;if(!window.confirm("Restore will REPLACE all current projects and tasks. Continue?"))return;localStorage.setItem(STORAGE_KEY,JSON.stringify(p));state=load();cursor=clampToYear(new Date(today));renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();scrollToMonth(cursor);toast("Backup restored");}catch(e){toast("Invalid backup file.");}};fr.readAsText(file);}
+  function restore(file){var fr=new FileReader();fr.onload=function(){try{var p=JSON.parse(fr.result);if(!p||!Array.isArray(p.projects))throw 0;if(!window.confirm("Restore will REPLACE all current projects and tasks. Continue?"))return;localStorage.setItem(STORAGE_KEY,JSON.stringify(p));state=load();cursor=clampToYear(new Date(today));save();renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);toast("Backup restored");}catch(e){toast("Invalid backup file.");}};fr.readAsText(file);}
   function download(blob,name){var u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
   function projName(){var p=state.projects.filter(function(x){return x.id===state.activeProject;})[0];return (p?p.name:"project").replace(/[^a-z0-9]+/gi,"-").toLowerCase();}
 
@@ -1401,24 +1534,37 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   /* ---------- cloud sync (active automatically when hosted with the /api/plan function) ---------- */
   function cloudApply(d){localStorage.setItem(STORAGE_KEY,JSON.stringify(d));state=load();cloudStamp=(state.meta&&state.meta.savedAt)||0;renderProjects();renderLibrary();refreshFilters();var st=el.calendarScroll.scrollTop;renderCalendar();el.calendarScroll.scrollTop=st;}
+  var cloudFails=0;
   function cloudPut(){
     clearTimeout(cloudTimer);
     cloudTimer=setTimeout(function(){
       state.meta={savedBy:(editorName()||"Unknown"),savedAt:Date.now()};
       var body=JSON.stringify(state);try{localStorage.setItem(STORAGE_KEY,body);}catch(e){}
-      fetch("/api/plan",{method:"POST",headers:{"Content-Type":"application/json"},body:body}).then(function(r){if(r.ok)cloudStamp=state.meta.savedAt;}).catch(function(){});
+      fetch("/api/plan",{method:"POST",headers:{"Content-Type":"application/json"},body:body})
+        .then(function(r){if(r.ok){cloudStamp=state.meta.savedAt;cloudFails=0;}else{cloudFails++;if(cloudFails===3)toast("⚠️ Cloud save is failing — recent changes may not be shared.");}})
+        .catch(function(){cloudFails++;if(cloudFails===3)toast("⚠️ Cloud save is failing — check your connection.");});
       cloudTimer=null;
     },800);
   }
+  window.addEventListener("pagehide",function(){
+    /* flush a pending debounced save so closing the tab doesn't lose the last edit */
+    if(!CLOUD||!cloudTimer)return;
+    clearTimeout(cloudTimer);cloudTimer=null;
+    state.meta={savedBy:(editorName()||"Unknown"),savedAt:Date.now()};
+    var body=JSON.stringify(state);try{localStorage.setItem(STORAGE_KEY,body);}catch(e){}
+    try{navigator.sendBeacon("/api/plan",new Blob([body],{type:"application/json"}));}catch(e){}
+  });
   function setCloudBadge(){
     if(!el.sharedStatus)return;
     if(CLOUD){el.sharedStatus.textContent="🟢 Live — this calendar is shared automatically. Every edit saves and syncs to everyone on the link.";if(el.sharedFileRow)el.sharedFileRow.style.display="none";}
     else renderShared();
   }
   function startPolling(){if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(function(){
-    if(!CLOUD||cloudTimer||overlays.length)return;
+    if(!CLOUD||cloudTimer||overlays.length||drag)return;
     fetch("/api/plan",{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(d){
-      if(!d||!d.projects)return;var rs=(d.meta&&d.meta.savedAt)||0;
+      if(!d||!d.projects)return;
+      if(cloudTimer||overlays.length||drag)return; /* user started editing while the fetch was in flight */
+      var rs=(d.meta&&d.meta.savedAt)||0;
       if(rs>cloudStamp){cloudApply(d);toast("Synced latest"+(d.meta&&d.meta.savedBy?(" from "+d.meta.savedBy):""));}
     }).catch(function(){});
   },20000);}
@@ -1429,6 +1575,79 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
       else if(state.projects&&(state.tasks.length||state.library.length))cloudPut();
       setCloudBadge();startPolling();
     }).catch(function(){CLOUD=false;});
+  }
+
+  /* ---------- AI assistant ---------- */
+  var aiBusy=false,aiDraftTasks=null;
+  function aiContext(){
+    var from=ymd(addDays(today,-7)),to=ymd(addDays(today,35));
+    var ts=tasksForProject().filter(function(t){return t.start<=to&&endDate(t)>=from;}).map(function(t){
+      return {name:t.name,start:t.start,duration:coerceDuration(t.duration),zone:zoneOf(t),crew:t.crew||"",status:t.status,progress:coerceProgress(t.progress)};
+    });
+    var wx=[];for(var i=0;i<16;i++){var k=ymd(addDays(today,i)),w=weatherData[k];if(w)wx.push({date:k,rain:w.rain,pop:w.pop,tmax:w.max});}
+    var hols=[];for(var j=0;j<42;j++){var k2=ymd(addDays(today,j-7)),h=holidayFor(k2);if(h)hols.push({date:k2,publicHoliday:h.ph||null,rdo:!!h.rdo});}
+    var zones=[],zs={};tasksForProject().forEach(function(t){var z=zoneOf(t);if(!zs[z]){zs[z]=1;zones.push(z);}});
+    var pj=state.projects.filter(function(x){return x.id===state.activeProject;})[0];
+    return {today:ymd(today),project:pj?pj.name:"",zones:zones,tasks:ts,weather:wx,holidays:hols,weatherLocation:(state.settings&&state.settings.label)||null};
+  }
+  function aiShow(text,loading){el.aiOut.hidden=false;el.aiOut.classList.toggle("loading",!!loading);el.aiOut.textContent=text;}
+  function aiCall(action,prompt,done){
+    if(aiBusy)return;
+    aiBusy=true;aiDraftTasks=null;el.aiAddTasksBtn.hidden=true;el.aiOutActions.hidden=true;el.aiHint.hidden=true;
+    aiShow("Thinking…",true);
+    fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:action,prompt:prompt,context:aiContext()})})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j};}).catch(function(){return {ok:false,status:r.status,j:null};});})
+      .then(function(res){
+        aiBusy=false;
+        if(res.status===501){aiShow("AI isn't set up yet.",false);el.aiHint.textContent="To enable it: in Vercel open this project → Settings → Environment Variables → add ANTHROPIC_API_KEY (create one at console.anthropic.com) → redeploy.";el.aiHint.hidden=false;return;}
+        if(res.status===404){aiShow("AI needs the hosted version — open the Vercel link (not the local file).",false);return;}
+        if(!res.ok){aiShow("AI error: "+((res.j&&res.j.error)||("HTTP "+res.status)),false);return;}
+        done(res.j);
+      })
+      .catch(function(){aiBusy=false;aiShow("Couldn't reach the AI service — check you're online and using the hosted link.",false);});
+  }
+  function aiText(action,prompt){
+    aiCall(action,prompt,function(j){
+      aiShow(j.text||"(no answer)",false);
+      el.aiOutActions.hidden=false;el.aiAddTasksBtn.hidden=true;
+    });
+  }
+  function colorForZone(zone){
+    var ts=tasksForProject();
+    for(var i=0;i<ts.length;i++){if(zoneOf(ts[i])===zone&&isHex(ts[i].color))return ts[i].color;}
+    return createColor||PALETTE[0];
+  }
+  function aiDraft(){
+    var prompt=el.aiInput.value.trim();
+    if(!prompt){el.aiInput.focus();toast("Describe the tasks first, e.g. “kerb pour M1 next Tuesday, 2 days”.");return;}
+    aiCall("tasks",prompt,function(j){
+      var ok=(j.tasks||[]).filter(function(t){return validStart(t.start);});
+      if(!ok.length){aiShow(j.text||"Couldn't turn that into tasks — try including a date.",false);return;}
+      aiDraftTasks=ok;
+      var lines=ok.map(function(t){return "• "+t.name+" — "+fmtLong(parseYmd(t.start))+(t.duration>1?(" ("+t.duration+" days)"):"")+(t.zone?(" · "+t.zone):"")+(t.crew?(" · "+t.crew):"");});
+      aiShow("Draft tasks — review then click Add:\n\n"+lines.join("\n"),false);
+      el.aiAddTasksBtn.textContent="Add "+ok.length+" task"+(ok.length===1?"":"s");
+      el.aiAddTasksBtn.hidden=false;el.aiOutActions.hidden=false;
+    });
+  }
+  function aiAddDraft(){
+    if(!aiDraftTasks||!aiDraftTasks.length)return;
+    var base=nextSortOrder(),counter=0;
+    var added=aiDraftTasks.map(function(t){counter++;return {id:uid(),projectId:state.activeProject,name:t.name,color:colorForZone(t.zone||""),start:t.start,duration:coerceDuration(t.duration),status:"planned",crew:t.crew||"",zone:t.zone||"",notes:"",progress:0,deps:[],sortOrder:base+counter,source:"ai"};});
+    state.tasks=state.tasks.concat(added);
+    aiDraftTasks=null;el.aiAddTasksBtn.hidden=true;
+    recomputeSchedule();save();refreshFilters();renderCalendar();
+    var addedIds={};added.forEach(function(t){addedIds[t.id]=1;});
+    toast("Added "+added.length+" task"+(added.length===1?"":"s"),"Undo",function(){
+      state.tasks=state.tasks.filter(function(t){return !addedIds[t.id];});
+      recomputeSchedule();save();refreshFilters();renderCalendar();
+    });
+    el.aiInput.value="";
+  }
+  function aiCopy(){
+    var txt=el.aiOut.textContent||"";
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){toast("Copied");}).catch(function(){toast("Couldn't copy");});}
+    else{var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast("Copied");}catch(e){toast("Couldn't copy");}ta.remove();}
   }
 
   /* ---------- navigation / view ---------- */
@@ -1467,7 +1686,8 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.prevBtn.addEventListener("click",function(){step(-1);});
   el.nextBtn.addEventListener("click",function(){step(1);});
   Array.prototype.forEach.call(el.viewSeg.children,function(b){b.addEventListener("click",function(){setView(b.dataset.view);});});
-  el.searchInput.addEventListener("input",function(){filter.q=this.value;renderCalendar();});
+  var searchTimer=null;
+  el.searchInput.addEventListener("input",function(){var v=this.value;clearTimeout(searchTimer);searchTimer=setTimeout(function(){filter.q=v;renderCalendar();},160);});
   el.filterStatus.addEventListener("change",function(){filter.status=this.value;renderCalendar();});
   el.filterCrew.addEventListener("change",function(){filter.crew=this.value;renderCalendar();});
   el.clearFilter.addEventListener("click",function(){filter={q:"",status:"",crew:"",color:""};el.searchInput.value="";el.filterStatus.value="";el.filterCrew.value="";refreshFilters();renderCalendar();});
@@ -1477,7 +1697,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.modal.addEventListener("mousedown",function(e){if(e.target===el.modal)closeModal(el.modal);});
   el.dayModalClose.addEventListener("click",function(){closeModal(el.dayModal);});el.dayModal.addEventListener("mousedown",function(e){if(e.target===el.dayModal)closeModal(el.dayModal);});
   el.exportClose.addEventListener("click",function(){closeModal(el.exportModal);});el.exportCancel.addEventListener("click",function(){closeModal(el.exportModal);});el.exportGo.addEventListener("click",runExport);el.exportModal.addEventListener("mousedown",function(e){if(e.target===el.exportModal)closeModal(el.exportModal);});
-  el.importLookaheadBtn.addEventListener("click",function(){el.importLookaheadFile.click();});
+  el.importLookaheadBtn.addEventListener("click",function(){
+    if(typeof XLSX==="undefined"){toast("Excel library couldn't load — check your internet connection and reload the page.");return;}
+    el.importLookaheadFile.click();
+  });
   el.importLookaheadFile.addEventListener("change",function(){
     var f=this.files&&this.files[0];this.value="";if(!f)return;
     var reader=new FileReader();
@@ -1490,8 +1713,20 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.importSheetSelect.addEventListener("change",runImportParse);
   el.importFrom.addEventListener("change",applyImportRange);
   el.importTo.addEventListener("change",applyImportRange);
+  el.aiSummaryBtn.addEventListener("click",function(){aiText("summary",el.aiInput.value.trim());});
+  el.aiRiskBtn.addEventListener("click",function(){aiText("risks",el.aiInput.value.trim());});
+  el.aiAskBtn.addEventListener("click",function(){var q=el.aiInput.value.trim();if(!q){el.aiInput.focus();toast("Type a question first.");return;}aiText("ask",q);});
+  el.aiTasksBtn.addEventListener("click",aiDraft);
+  el.aiAddTasksBtn.addEventListener("click",aiAddDraft);
+  el.aiCopyBtn.addEventListener("click",aiCopy);
+  el.aiInput.addEventListener("keydown",function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();var q=el.aiInput.value.trim();if(q)aiText("ask",q);}});
   el.importClose.addEventListener("click",function(){closeModal(el.importModal);});el.importCancel.addEventListener("click",function(){closeModal(el.importModal);});el.importConfirm.addEventListener("click",confirmImport);el.importModal.addEventListener("mousedown",function(e){if(e.target===el.importModal)closeModal(el.importModal);});
-  el.calendarScroll.addEventListener("scroll",function(){if(view!=="month"||labelTick)return;labelTick=true;requestAnimationFrame(function(){labelTick=false;updateMonthLabel();});});
+  el.calendarScroll.addEventListener("scroll",function(){if(openWeekPop)closeWeekPop();if(view!=="month"||labelTick)return;labelTick=true;requestAnimationFrame(function(){labelTick=false;updateMonthLabel();});});
+  document.addEventListener("visibilitychange",function(){
+    if(document.hidden)return;
+    var nt=new Date();nt.setHours(0,0,0,0);
+    if(ymd(nt)!==ymd(today)){today=nt;renderCalendar();}
+  });
 
   recomputeSchedule();
   renderProjects();renderLibrary();refreshFilters();updateWeatherUI();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);

@@ -23,8 +23,17 @@ module.exports = async (req, res) => {
   try {
     if (req.method === "GET") {
       const r = await fetch(URL + "/get/plan", { headers: auth, cache: "no-store" });
+      // A store error must NOT look like "empty database" — the client would
+      // then push its local (possibly stale) state over the real shared plan.
+      if (!r.ok) {
+        res.status(502).json({ error: "KV read failed: " + r.status });
+        return;
+      }
       const j = await r.json();
-      const val = j && j.result ? JSON.parse(j.result) : null;
+      let val = null;
+      if (j && j.result) {
+        try { val = JSON.parse(j.result); } catch (e) { val = null; }
+      }
       res.status(200).json(val);
       return;
     }
@@ -34,6 +43,16 @@ module.exports = async (req, res) => {
       if (body && typeof body !== "string") body = JSON.stringify(body);
       if (!body) {
         res.status(400).json({ error: "empty body" });
+        return;
+      }
+      if (body.length > 2000000) {
+        res.status(413).json({ error: "plan too large" });
+        return;
+      }
+      let parsed;
+      try { parsed = JSON.parse(body); } catch (e) { parsed = null; }
+      if (!parsed || !Array.isArray(parsed.projects)) {
+        res.status(400).json({ error: "not a valid planner state" });
         return;
       }
       const r = await fetch(URL + "/set/plan", {
