@@ -958,7 +958,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     if(openWeekPop.btn)openWeekPop.btn.classList.remove("open");
     openWeekPop=null;
   }
-  document.addEventListener("mousedown",function(e){if(openWeekPop&&!e.target.closest(".week-menu-pop")&&!e.target.closest(".week-menu-btn"))closeWeekPop();});
+  document.addEventListener("mousedown",function(e){var t=e.target;if(openWeekPop&&!(t&&t.closest&&(t.closest(".week-menu-pop")||t.closest(".week-menu-btn"))))closeWeekPop();});
   document.addEventListener("keydown",function(e){if(e.key==="Escape"&&openWeekPop)closeWeekPop();});
   function weekMenuCell(weekStartKey){
     var cell=document.createElement("div");cell.className="week-menu-cell";
@@ -1257,9 +1257,10 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   function excelSerialToDate(n){return new Date(Math.round((n-25569)*86400000));}
   function looksLikeDateSerial(v){return typeof v==="number"&&v>25000&&v<80000;}
   function cleanZoneLabel(s){
-    var first=String(s==null?"":s).split(/\r\n|\r|\n/)[0].replace(/[\s:.\-–]+$/,"").trim();
-    var m=first.match(/\bM\s*(\d+)\b/i);
+    var whole=String(s==null?"":s);
+    var m=whole.match(/\bM\s*(\d+)\b/i); /* match anywhere in the cell — the M-number is often on line 2 */
     if(m)return "Zone M"+m[1];
+    var first=whole.split(/\r\n|\r|\n/)[0].replace(/[\s:.\-–]+$/,"").trim();
     return first||"Zone";
   }
   function isContLine(line){return /^cont(inued?)?\.?$/i.test(line.trim());}
