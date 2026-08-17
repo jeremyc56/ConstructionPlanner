@@ -609,7 +609,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   /* ── Login gate ── */
   var AUTH_KEY="cycon.cp.auth";
   var AUTH_USER="Cycon";
-  var AUTH_PASS="Intrepid77";
+  var AUTH_PASS="Intrepid77^^";
   var DAY_MS=86400000;
   function isAuthed(){try{var s=JSON.parse(localStorage.getItem(AUTH_KEY)||"{}");return s.ts&&(Date.now()-s.ts)<DAY_MS;}catch(e){return false;}}
   function storeAuth(name){try{localStorage.setItem(AUTH_KEY,JSON.stringify({ts:Date.now(),name:name}));}catch(e){}}
