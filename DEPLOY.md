@@ -8,7 +8,7 @@ You'll do this in the browser — no software to install.
 The two files that matter:
 - `index.html`  (the app)
 - `api/plan.js` (the little server that saves/loads the shared plan)
-- `cycon-logo.png` (the logo)
+- `civ360-logo.png` (the logo)
 
 ---
 
@@ -18,7 +18,7 @@ The two files that matter:
 2. Click the **+** (top right) → **New repository**. Name it e.g. `construction-planner`,
    keep it **Private**, click **Create repository**.
 3. On the new repo page click **uploading an existing file**.
-4. Drag in `index.html`, `cycon-logo.png`, **and the `api` folder** (with `plan.js` inside).
+4. Drag in `index.html`, `civ360-logo.png`, **and the `api` folder** (with `plan.js` inside).
    - Tip: if it won't take the folder, create the file manually: click **Add file → Create new file**,
      type `api/plan.js` as the name (the `api/` makes the folder), paste the contents, commit.
 5. Click **Commit changes**.
@@ -52,5 +52,5 @@ Put your name in the "Your name" box so saves are tagged with who made them.
 - Anyone with the link can edit. If you want it locked down (login or a passcode), tell me and I'll add it.
 - It's "last save wins" — fine for a task calendar; the panel still tells you who saved last.
 - Vercel's free **Hobby** plan is officially for non-commercial use. For a company tool, the equivalent
-  free tiers on **Cloudflare Pages** or **Azure Static Web Apps** (Microsoft, fits Cycon) allow commercial
+  free tiers on **Cloudflare Pages** or **Azure Static Web Apps** (Microsoft, fits CIV360) allow commercial
   use — the same files deploy there too. Ask me for steps if you'd prefer one of those.
