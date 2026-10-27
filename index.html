@@ -152,7 +152,7 @@ select.text-input{appearance:none;-webkit-appearance:none;cursor:pointer;backgro
 .day-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;flex:none;}
 .day-head-l{display:flex;align-items:center;gap:6px;min-width:0;}
 .day-add{display:none;width:100%;border:1.5px dashed var(--border);background:transparent;border-radius:7px;color:var(--text-mut);font-size:17px;line-height:1;cursor:pointer;padding:5px 0;text-align:center;flex:none;box-sizing:border-box;margin-top:2px;}
-.day:hover .day-add{display:block;border-color:var(--green);color:var(--green);background:var(--green-soft);}.day-add:hover{filter:brightness(.95);}
+@media (hover:hover){.day:hover .day-add{display:block;border-color:var(--green);color:var(--green);background:var(--green-soft);}.day-add:hover{filter:brightness(.95);}}
 .day-num{font-size:13px;font-weight:700;color:var(--text-2);min-width:24px;height:24px;display:grid;place-items:center;padding:0 4px;}
 .day.today .day-num{background:var(--green);color:#fff;border-radius:12px;}
 .day-month{font-size:10px;font-weight:700;color:var(--text-mut);}
@@ -736,9 +736,22 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   var state=load();
   var today=new Date();today.setHours(0,0,0,0);
-  var YEAR=Math.min(2027,Math.max(2025,today.getFullYear())),YEAR_START=new Date(YEAR,0,1),YEAR_END=new Date(YEAR,11,31);
-  function clampToYear(d){return d<YEAR_START?new Date(YEAR_START):(d>YEAR_END?new Date(YEAR_END):d);}
-  var cursor=clampToYear(new Date(today));
+  /* month view renders a rolling range (6 months back to 12 ahead of today);
+     navigating past either end grows it, so no date is ever unreachable */
+  var RANGE_START,RANGE_END;
+  function resetRange(){
+    var s=new Date(today.getFullYear(),today.getMonth()-6,1),e=new Date(today.getFullYear(),today.getMonth()+13,0);
+    RANGE_START=RANGE_START&&RANGE_START<s?RANGE_START:s;RANGE_END=RANGE_END&&RANGE_END>e?RANGE_END:e;
+  }
+  resetRange();
+  function ensureRange(d){
+    var grew=false;
+    if(d<RANGE_START){RANGE_START=new Date(d.getFullYear(),d.getMonth(),1);grew=true;}
+    if(d>RANGE_END){RANGE_END=new Date(d.getFullYear(),d.getMonth()+1,0);grew=true;}
+    return grew;
+  }
+  function inRange(d){if(ensureRange(d)&&view==="month")renderCalendar();return d;}
+  var cursor=new Date(today);
   var view="month";
   var createColor=PALETTE[0],editColor=PALETTE[0],editingId=null,creatingForDate=null;
   var filter={q:"",status:"",crew:"",color:""};
@@ -769,11 +782,15 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   function isHex(c){return typeof c==="string"&&/^#[0-9a-fA-F]{6}$/.test(c);}
   function coerceColor(c){return isHex(c)?c:PALETTE[0];}
   function coerceStatus(s){return VALID_STATUS[s]?s:"planned";}
-  function validStart(s){if(typeof s!=="string"||!DATE_RE.test(s))return false;var d=parseYmd(s);return d&&!isNaN(d.getTime());}
+  /* must be a real calendar date: "2026-02-30" parses (rolls to 2 Mar) but isn't one */
+  function validStart(s){if(typeof s!=="string"||!DATE_RE.test(s))return false;var d=parseYmd(s);return !!d&&!isNaN(d.getTime())&&ymd(d)===s;}
   function sanitizeTask(t,pid){
-    if(!t||typeof t!=="object"||!validStart(t.start))return null;
+    if(!t||typeof t!=="object")return null;
+    /* older data may hold an impossible date like 2026-02-30; keep the task on the day it was displayed on */
+    var start=t.start;if(typeof start==="string"&&DATE_RE.test(start)&&!validStart(start)){var nd=parseYmd(start);if(!isNaN(nd.getTime()))start=ymd(nd);}
+    if(!validStart(start))return null;
     var name=String(t.name==null?"":t.name).slice(0,120).trim();if(!name)return null;
-    return {id:t.id||uid(),projectId:t.projectId||pid,name:name,color:coerceColor(t.color),start:t.start,
+    return {id:t.id||uid(),projectId:t.projectId||pid,name:name,color:coerceColor(t.color),start:start,
       duration:coerceDuration(t.duration),status:coerceStatus(t.status),crew:String(t.crew==null?"":t.crew).slice(0,120),
       zone:String(t.zone==null?"":t.zone).slice(0,120),notes:String(t.notes==null?"":t.notes).slice(0,500),
       progress:coerceProgress(t.progress),deps:Array.isArray(t.deps)?t.deps.filter(function(x){return typeof x==="string";}):[],libId:t.libId||null,
@@ -783,18 +800,33 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function sanitizeLib(i){if(!i||typeof i!=="object")return null;var name=String(i.name==null?"":i.name).slice(0,120).trim();if(!name)return null;return {id:i.id||uid(),name:name,color:coerceColor(i.color)};}
 
+  /* build a clean state from parsed JSON (backup, shared file, cloud, storage);
+     throws if it isn't a planner state, so callers can refuse it without
+     touching the current data */
+  function sanitizeState(p){
+    if(!p||typeof p!=="object"||!Array.isArray(p.projects))throw new Error("not a planner state");
+    var pids={};
+    var projects=p.projects.filter(function(pr){return pr&&typeof pr==="object";}).map(function(pr){var id=(typeof pr.id==="string"&&pr.id&&!pids[pr.id])?pr.id:uid();pids[id]=1;return {id:id,name:String(pr.name||"Project").slice(0,80)};});
+    if(!projects.length){var nid=uid();pids[nid]=1;projects=[{id:nid,name:"Main Project"}];}
+    var active=p.activeProject&&pids[p.activeProject]?p.activeProject:projects[0].id;
+    var lib=(Array.isArray(p.library)?p.library:[]).map(sanitizeLib).filter(Boolean);
+    var tasks=(Array.isArray(p.tasks)?p.tasks:[]).map(function(t){return sanitizeTask(t,active);}).filter(Boolean);
+    /* tasks pointing at a project that no longer exists would be invisible forever */
+    tasks.forEach(function(t){if(!pids[t.projectId])t.projectId=active;});
+    var ids={};tasks.forEach(function(t){ids[t.id]=1;});
+    tasks.forEach(function(t){if(t.deps&&t.deps.length)t.deps=t.deps.filter(function(d){return ids[d];});});
+    return {projects:projects,activeProject:active,library:lib,tasks:tasks,settings:(p.settings&&typeof p.settings==="object")?p.settings:{},meta:(p.meta&&typeof p.meta==="object")?p.meta:{}};
+  }
   function load(){
     try{
       var raw=localStorage.getItem(STORAGE_KEY);
       if(raw){
-        var p=JSON.parse(raw);
-        var projects=(Array.isArray(p.projects)&&p.projects.length)?p.projects.map(function(pr){return {id:pr.id||uid(),name:String(pr.name||"Project").slice(0,80)};}):[{id:uid(),name:"Main Project"}];
-        var active=p.activeProject&&projects.some(function(pr){return pr.id===p.activeProject;})?p.activeProject:projects[0].id;
-        var lib=(Array.isArray(p.library)?p.library:[]).map(sanitizeLib).filter(Boolean);
-        var tasks=(Array.isArray(p.tasks)?p.tasks:[]).map(function(t){return sanitizeTask(t,active);}).filter(Boolean);
-        var ids={};tasks.forEach(function(t){ids[t.id]=1;});
-        tasks.forEach(function(t){if(t.deps&&t.deps.length)t.deps=t.deps.filter(function(d){return ids[d];});});
-        return {projects:projects,activeProject:active,library:lib,tasks:tasks,settings:(p.settings&&typeof p.settings==="object")?p.settings:{},meta:(p.meta&&typeof p.meta==="object")?p.meta:{}};
+        try{return sanitizeState(JSON.parse(raw));}
+        catch(e){
+          /* unreadable saved data: keep a copy so the first save can't destroy it */
+          try{localStorage.setItem(STORAGE_KEY+".recovery-"+Date.now(),raw);}catch(e2){}
+          console.warn("Saved planner data was unreadable; a copy was kept under "+STORAGE_KEY+".recovery-*");
+        }
       }
       var old=localStorage.getItem(OLD_KEY);
       if(old){var o=JSON.parse(old),pid=uid();
@@ -946,11 +978,11 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     if(opts.cap&&entries.length>cap){var seen={};visible.forEach(function(en){seen[en.task.id]=1;});var hidden={};entries.slice(cap).forEach(function(en){if(!seen[en.task.id])hidden[en.task.id]=1;});var hc=Object.keys(hidden).length;if(hc>0){var more=document.createElement("button");more.className="day-overflow";more.type="button";more.textContent="+"+hc+" more";more.dataset.date=key;more.addEventListener("click",function(ev){ev.stopPropagation();openDayModal(this.dataset.date);});cell.appendChild(more);}}
   }
   function renderMonth(){
-    var gridStart=mondayOf(new Date(YEAR,0,1));
-    var gridEnd=addDays(mondayOf(new Date(YEAR,11,31)),6);
+    var gridStart=mondayOf(RANGE_START);
+    var gridEnd=addDays(mondayOf(RANGE_END),6);
     var total=Math.round((gridEnd-gridStart)/86400000)+1;var map=tasksByDate(ymd(gridStart),ymd(gridEnd));
     el.calGrid.innerHTML="";
-    for(var i=0;i<total;i++){var date=addDays(gridStart,i),key=ymd(date),dow=(date.getDay()+6)%7;var cell=makeDayCell(date,{inMonth:date.getFullYear()===YEAR});fillDayTasks(cell,key,dow,{map:map,cap:isMobile()?MOBILE_VISIBLE:MAX_VISIBLE,rich:false});attachCell(cell);el.calGrid.appendChild(cell);if(dow===6)el.calGrid.appendChild(weekMenuCell(ymd(addDays(date,-6))));}
+    for(var i=0;i<total;i++){var date=addDays(gridStart,i),key=ymd(date),dow=(date.getDay()+6)%7;var cell=makeDayCell(date,{inMonth:date>=RANGE_START&&date<=RANGE_END});fillDayTasks(cell,key,dow,{map:map,cap:isMobile()?MOBILE_VISIBLE:MAX_VISIBLE,rich:false});attachCell(cell);el.calGrid.appendChild(cell);if(dow===6)el.calGrid.appendChild(weekMenuCell(ymd(addDays(date,-6))));}
     updateMonthLabel();
   }
   function renderWeek(){
@@ -1131,10 +1163,14 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function cellUnder(e){var u=document.elementFromPoint(e.clientX,e.clientY);return u&&u.closest?u.closest(".day,.dayview"):null;}
   function clearTargets(){var c=document.querySelectorAll(".drop-target");for(var i=0;i<c.length;i++)c[i].classList.remove("drop-target");var ln=document.querySelectorAll(".reorder-line");for(var i=0;i<ln.length;i++)ln[i].remove();}
+  function showGhost(x,y){
+    if(!drag.ghost){var g=document.createElement("div");g.className="drag-ghost";g.textContent=drag.label;g.style.background=drag.color;g.style.color=textOn(drag.color);document.body.appendChild(g);drag.ghost=g;document.body.style.cursor="grabbing";if(drag.chip)drag.chip.style.opacity=".4";}
+    drag.ghost.style.left=(x+12)+"px";drag.ghost.style.top=(y+14)+"px";
+  }
   function dragMove(e){
     if(!drag)return;
-    if(!drag.moved){if(Math.abs(e.clientX-drag.sx)<5&&Math.abs(e.clientY-drag.sy)<5)return;drag.moved=true;var g=document.createElement("div");g.className="drag-ghost";g.textContent=drag.label;g.style.background=drag.color;g.style.color=textOn(drag.color);document.body.appendChild(g);drag.ghost=g;document.body.style.cursor="grabbing";if(drag.chip)drag.chip.style.opacity=".4";}
-    drag.ghost.style.left=(e.clientX+12)+"px";drag.ghost.style.top=(e.clientY+14)+"px";
+    if(!drag.moved){if(Math.abs(e.clientX-drag.sx)<5&&Math.abs(e.clientY-drag.sy)<5)return;drag.moved=true;}
+    showGhost(e.clientX,e.clientY);
     clearTargets();drag.reorderTargetId=null;drag.reorderBefore=true;
     var cell=cellUnder(e);if(cell)cell.classList.add("drop-target");
     if(cell&&cell.dataset.date&&drag.kind==="task"){
@@ -1166,30 +1202,35 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   window.addEventListener("blur",cancelDrag);
   /* touch: a quick tap still opens the task (via the emulated mouse events);
-     press-and-hold picks it up so it can be dragged to another day */
+     press-and-hold picks it up so it can be dragged to another day, and
+     press-and-hold then release without moving opens it */
   function attachTouchDrag(node,start){
-    var timer=null,edge=null,sx=0,sy=0,last=null,active=false;
-    function stop(){clearTimeout(timer);clearInterval(edge);active=false;}
+    var timer=null,edge=null,sx=0,sy=0,last=null,active=false,touching=false;
+    function stop(){clearTimeout(timer);clearInterval(edge);edge=null;last=null;active=false;}
+    function abort(){var was=active;stop();if(was)cancelDrag();}
     node.addEventListener("touchstart",function(e){
-      if(e.touches.length!==1||e.target.closest(".chip-check"))return;
-      sx=e.touches[0].clientX;sy=e.touches[0].clientY;stop();
+      if(e.touches.length!==1){abort();return;}  /* second finger = pinch, not a drag */
+      if(e.target.closest(".chip-check")||e.target.closest(".rsz"))return;
+      touching=true;sx=e.touches[0].clientX;sy=e.touches[0].clientY;stop();
       timer=setTimeout(function(){
-        active=true;start(sx,sy);if(navigator.vibrate)navigator.vibrate(12);last={clientX:sx+6,clientY:sy+6};dragMove(last);
-        /* keep scrolling while the finger rests near the top/bottom edge */
-        edge=setInterval(function(){if(drag&&last)dragMove(last);},40);
+        active=true;start(sx,sy);showGhost(sx,sy);if(navigator.vibrate)navigator.vibrate(12);
+        /* once the finger has moved, keep scrolling while it rests near the top/bottom edge */
+        edge=setInterval(function(){if(drag&&drag.moved&&last)dragMove(last);},40);
       },380);
     },{passive:true});
     node.addEventListener("touchmove",function(e){
+      if(e.touches.length>1){abort();return;}
       var p=e.touches[0];
       if(!active){if(Math.abs(p.clientX-sx)>8||Math.abs(p.clientY-sy)>8)clearTimeout(timer);return;}
       e.preventDefault();last={clientX:p.clientX,clientY:p.clientY};dragMove(last);
     },{passive:false});
     node.addEventListener("touchend",function(e){
-      var was=active;stop();if(!was)return;e.preventDefault();
-      var p=e.changedTouches[0];if(drag&&!drag.moved){cancelDrag();return;}dragUp({clientX:p.clientX,clientY:p.clientY});
+      touching=false;var was=active;stop();if(!was)return;e.preventDefault();
+      var p=e.changedTouches[0];dragUp({clientX:p.clientX,clientY:p.clientY});
     },{passive:false});
-    node.addEventListener("touchcancel",function(){var was=active;stop();if(was)cancelDrag();});
-    node.addEventListener("contextmenu",function(e){e.preventDefault();});
+    node.addEventListener("touchcancel",function(){touching=false;abort();});
+    /* only suppress the long-press menu on touch; mouse right-click still works */
+    node.addEventListener("contextmenu",function(e){if(touching||active)e.preventDefault();});
   }
   function nextSortOrder(){var mx=0;tasksForProject().forEach(function(t){if((t.sortOrder||0)>mx)mx=t.sortOrder||0;});return mx+100;}
   function reorderOnDay(taskId,dateKey,targetId,before){
@@ -1225,7 +1266,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
 
   /* ---------- continuous scroll ---------- */
-  /* calendar range is fixed to the whole of YEAR (2026); no dynamic re-anchoring */
+  /* month view covers RANGE_START..RANGE_END (see ensureRange) */
   function scrollToDate(dateKey){
     if(view!=="month")return;
     var c=el.calGrid.querySelector('[data-date="'+dateKey+'"]');
@@ -1365,7 +1406,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     /* a real date-header row ascends left-to-right in steps of 1-4 days */
     var keys=Object.keys(cols).sort(function(a,b){return a-b;});
     for(var i=1;i<keys.length;i++){
-      var diff=(parseYmd(cols[keys[i]])-parseYmd(cols[keys[i-1]]))/86400000;
+      var diff=Math.round((parseYmd(cols[keys[i]])-parseYmd(cols[keys[i-1]]))/86400000); /* round: DST days are 23/25h */
       if(!(diff>=1&&diff<=4))return false;
     }
     return true;
@@ -1501,7 +1542,14 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var sheetName=el.importSheetSelect.value||importWorkbook.SheetNames[0];
     var ws=importWorkbook.Sheets[sheetName];
     var full=parseLookaheadSheet(ws);
-    if(!full.tasks.length){toast("Couldn't find any tasks in that sheet — check it matches the Lookahead format.");return;}
+    if(!full.tasks.length){
+      /* forget the previous sheet so Confirm can't import it while this one is selected */
+      importParsedFull=null;importParsed=null;el.importConfirm.disabled=true;
+      el.importZones.innerHTML="";el.importRangeRow.style.display="none";el.importRemovedWrap.style.display="none";
+      el.importSummary.textContent="No tasks found in this sheet — pick another sheet, or check it matches the Lookahead format.";
+      toast("Couldn't find any tasks in that sheet — check it matches the Lookahead format.");return;
+    }
+    el.importConfirm.disabled=false;
     importParsedFull=full;
     importZoneColors={};full.zones.forEach(function(z,i){importZoneColors[z]=PALETTE[i%PALETTE.length];});
     el.importSub.textContent="File covers "+fmtLong(parseYmd(full.rangeStart))+" – "+fmtLong(parseYmd(full.rangeEnd));
@@ -1532,7 +1580,8 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
   function importImpact(p){
     /* removed: existing tasks starting inside the window (replaced by the sheet).
-       trimmed: tasks starting before the window that run into it — shortened, not deleted. */
+       trimmed: tasks starting before the window that run into it — shortened, not deleted;
+       any that also run past the window get their remaining days kept after it (split). */
     var removed=[],trimmed=[];
     tasksForProject().forEach(function(t){
       if(t.start>=p.rangeStart&&t.start<=p.rangeEnd)removed.push(t);
@@ -1551,7 +1600,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     if(p.skipped){var l3=document.createElement("div");l3.textContent=p.skipped+" line(s) skipped (RDO / Public Holiday / No works / TBC labels / group headings).";el.importSummary.appendChild(l3);}
     if(imp.removed.length||imp.trimmed.length){
       el.importRemovedWrap.style.display="";el.importRemovedList.innerHTML="";
-      var listed=imp.removed.map(function(t){return {t:t,note:""};}).concat(imp.trimmed.map(function(t){return {t:t,note:" (shortened)"};}));
+      var listed=imp.removed.map(function(t){return {t:t,note:""};}).concat(imp.trimmed.map(function(t){return {t:t,note:endDate(t)>p.rangeEnd?" (split around range)":" (shortened)"};}));
       listed.sort(function(a,b){return a.t.start.localeCompare(b.t.start);}).forEach(function(x){
         var row=document.createElement("div");row.className="import-removed-item";
         row.innerHTML="<span>"+esc(x.t.name)+esc(x.note)+"</span><span>"+esc(fmtLong(parseYmd(x.t.start)))+"</span>";
@@ -1567,13 +1616,20 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     var trimmed=imp.trimmed.map(function(t){return {t:t,oldDuration:t.duration};});
     var removedIds={};removed.forEach(function(t){removedIds[t.id]=1;});
     var kept=state.tasks.filter(function(t){return !removedIds[t.id];});
-    trimmed.forEach(function(x){x.t.duration=Math.round((parseYmd(p.rangeStart)-parseYmd(x.t.start))/86400000);});
+    var tails=[],afterStart=ymd(addDays(parseYmd(p.rangeEnd),1));
+    trimmed.forEach(function(x){
+      var end=endDate(x.t);
+      x.t.duration=Math.round((parseYmd(p.rangeStart)-parseYmd(x.t.start))/86400000);
+      /* a task spanning the whole window keeps its days after the window as a separate task */
+      if(end>p.rangeEnd)tails.push(Object.assign({},x.t,{id:uid(),start:afterStart,duration:Math.round((parseYmd(end)-parseYmd(afterStart))/86400000)+1,deps:[],sortOrder:x.t.sortOrder}));
+    });
+    kept=kept.concat(tails);
     var zoneRank={};p.zones.forEach(function(z,i){zoneRank[z]=i;});
     var base=nextSortOrder(),counter=0;
     var added=p.tasks.map(function(pt){counter++;return {id:uid(),projectId:state.activeProject,name:pt.name,color:zoneColorFor(pt.zone,0,importZoneColors),start:pt.start,duration:pt.duration,status:"planned",crew:"",zone:pt.zone,notes:"",progress:0,deps:[],sortOrder:base+zoneRank[pt.zone]*100000+counter,source:"import",importedAt:Date.now()};});
     state.tasks=kept.concat(added);
     recomputeSchedule();save();refreshFilters();renderCalendar();closeModal(el.importModal);
-    var addedIds={};added.forEach(function(t){addedIds[t.id]=1;});
+    var addedIds={};added.concat(tails).forEach(function(t){addedIds[t.id]=1;});
     toast("Imported "+added.length+", replaced "+removed.length+(trimmed.length?(", shortened "+trimmed.length):""),"Undo",function(){
       state.tasks=state.tasks.filter(function(t){return !addedIds[t.id];}).concat(removed);
       trimmed.forEach(function(x){x.t.duration=x.oldDuration;});
@@ -1583,7 +1639,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
 
   /* ---------- backup / restore ---------- */
   function backup(){download(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),"construction-planner-backup-"+ymd(today)+".json");toast("Backup saved");}
-  function restore(file){var fr=new FileReader();fr.onload=function(){try{var p=JSON.parse(fr.result);if(!p||!Array.isArray(p.projects))throw 0;if(!window.confirm("Restore will REPLACE all current projects and tasks. Continue?"))return;localStorage.setItem(STORAGE_KEY,JSON.stringify(p));state=load();cursor=clampToYear(new Date(today));save();renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);toast("Backup restored");}catch(e){toast("Invalid backup file.");}};fr.readAsText(file);}
+  function restore(file){var fr=new FileReader();fr.onload=function(){try{var next=sanitizeState(JSON.parse(fr.result));if(!window.confirm("Restore will REPLACE all current projects and tasks. Continue?"))return;state=next;cursor=inRange(new Date(today));save();renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);toast("Backup restored");}catch(e){toast("Invalid backup file.");}};fr.readAsText(file);}
   function download(blob,name){var u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
   function projName(){var p=state.projects.filter(function(x){return x.id===state.activeProject;})[0];return (p?p.name:"project").replace(/[^a-z0-9]+/gi,"-").toLowerCase();}
 
@@ -1599,9 +1655,9 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
     else t="Opened as a local file: “Save changes” downloads the file (move/replace it in your shared OneDrive folder) and “Open file” loads one back in. Host the app for one-click in-place saving.";
     el.sharedStatus.textContent=t;
   }
-  function applyLoaded(){cursor=clampToYear(new Date(today));renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);renderShared();}
+  function applyLoaded(){cursor=inRange(new Date(today));renderProjects();renderLibrary();refreshFilters();updateWeatherUI();loadWeather();renderCalendar();setTimeout(function(){scrollToDate(ymd(today));},0);renderShared();}
   async function loadFromHandle(){
-    try{var f=await fileHandle.getFile();var p=JSON.parse(await f.text());if(!p||!Array.isArray(p.projects))throw 0;localStorage.setItem(STORAGE_KEY,JSON.stringify(p));state=load();loadedStamp=(state.meta&&state.meta.savedAt)||0;applyLoaded();toast("Loaded shared calendar");}
+    try{var f=await fileHandle.getFile();var next=sanitizeState(JSON.parse(await f.text()));state=next;try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e2){}loadedStamp=(state.meta&&state.meta.savedAt)||0;applyLoaded();toast("Loaded shared calendar");}
     catch(e){toast("That file isn't a valid planner file.");}
   }
   async function sharedOpen(){
@@ -1621,7 +1677,7 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
 
   /* ---------- cloud sync (active automatically when hosted with the /api/plan function) ---------- */
-  function cloudApply(d){localStorage.setItem(STORAGE_KEY,JSON.stringify(d));state=load();cloudStamp=(state.meta&&state.meta.savedAt)||0;renderProjects();renderLibrary();refreshFilters();var st=el.calendarScroll.scrollTop;renderCalendar();el.calendarScroll.scrollTop=st;}
+  function cloudApply(d){var next;try{next=sanitizeState(d);}catch(e){return;}state=next;try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}cloudStamp=(state.meta&&state.meta.savedAt)||0;renderProjects();renderLibrary();refreshFilters();var st=el.calendarScroll.scrollTop;renderCalendar();el.calendarScroll.scrollTop=st;}
   var cloudFails=0;
   function cloudPut(){
     clearTimeout(cloudTimer);
@@ -1739,8 +1795,8 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   }
 
   /* ---------- navigation / view ---------- */
-  function step(dir){if(view==="month"){cursor.setDate(1);cursor.setMonth(cursor.getMonth()+dir);cursor=clampToYear(cursor);scrollToMonth(cursor);updateMonthLabel();}else if(view==="week"){cursor=clampToYear(addDays(cursor,7*dir));renderCalendar();}else{cursor=clampToYear(addDays(cursor,dir));renderCalendar();}}
-  function goToday(){cursor=clampToYear(new Date(today));if(view==="month"){scrollToDate(ymd(today));updateMonthLabel();}else renderCalendar();}
+  function step(dir){if(view==="month"){cursor.setDate(1);cursor.setMonth(cursor.getMonth()+dir);cursor=inRange(cursor);scrollToMonth(cursor);updateMonthLabel();}else if(view==="week"){cursor=inRange(addDays(cursor,7*dir));renderCalendar();}else{cursor=inRange(addDays(cursor,dir));renderCalendar();}}
+  function goToday(){cursor=inRange(new Date(today));if(view==="month"){scrollToDate(ymd(today));updateMonthLabel();}else renderCalendar();}
   function setView(v){view=v;Array.prototype.forEach.call(el.viewSeg.children,function(b){b.classList.toggle("active",b.dataset.view===v);});renderCalendar();if(v==="month")scrollToMonth(cursor);else el.calendarScroll.scrollTop=0;}
 
   /* ---------- init ---------- */
@@ -1748,7 +1804,12 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.customColor.addEventListener("input",function(){createColor=el.customColor.value;el.swatches.querySelectorAll(".swatch").forEach(function(s){s.classList.remove("selected");});});
   el.createBtn.addEventListener("click",createItem);
   var layoutEl=document.querySelector(".layout");
-  var isMobile=function(){return window.innerWidth<=640;};
+  /* one source of truth with the CSS breakpoint */
+  var mq=window.matchMedia("(max-width:640px)");
+  var isMobile=function(){return mq.matches;};
+  /* close a modal when its backdrop is tapped/clicked; using click (not mousedown)
+     stops the same tap falling through to the calendar cell underneath */
+  function closeOnBackdrop(ov){var downOn=false;ov.addEventListener("mousedown",function(e){downOn=e.target===ov;});ov.addEventListener("click",function(e){if(downOn&&e.target===ov)closeModal(ov);downOn=false;});}
   if(isMobile()){layoutEl.classList.add("nav-closed");}else if(state.settings&&state.settings.navClosed){layoutEl.classList.add("nav-closed");}
   requestAnimationFrame(function(){requestAnimationFrame(function(){layoutEl.classList.add("ready");});});
   document.getElementById("navToggle").addEventListener("click",function(){var c=layoutEl.classList.toggle("nav-closed");state.settings=state.settings||{};if(!isMobile())state.settings.navClosed=c;save();});
@@ -1787,12 +1848,11 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   var filterToggle=document.getElementById("filterToggle");
   filterToggle.addEventListener("click",function(){var on=el.calTop.classList.toggle("show-filters");filterToggle.setAttribute("aria-expanded",on?"true":"false");if(on)el.searchInput.focus();});
   /* re-render when crossing the phone breakpoint (month cells cap their chips on phones) */
-  var mq=window.matchMedia("(max-width:640px)");
   function onBreakpoint(){if(mq.matches)layoutEl.classList.add("nav-closed");renderCalendar();if(view==="month")scrollToMonth(cursor);}
   if(mq.addEventListener)mq.addEventListener("change",onBreakpoint);else if(mq.addListener)mq.addListener(onBreakpoint);
-  el.modal.addEventListener("mousedown",function(e){if(e.target===el.modal)closeModal(el.modal);});
-  el.dayModalClose.addEventListener("click",function(){closeModal(el.dayModal);});el.dayModal.addEventListener("mousedown",function(e){if(e.target===el.dayModal)closeModal(el.dayModal);});
-  el.exportClose.addEventListener("click",function(){closeModal(el.exportModal);});el.exportCancel.addEventListener("click",function(){closeModal(el.exportModal);});el.exportGo.addEventListener("click",runExport);el.exportModal.addEventListener("mousedown",function(e){if(e.target===el.exportModal)closeModal(el.exportModal);});
+  closeOnBackdrop(el.modal);
+  el.dayModalClose.addEventListener("click",function(){closeModal(el.dayModal);});closeOnBackdrop(el.dayModal);
+  el.exportClose.addEventListener("click",function(){closeModal(el.exportModal);});el.exportCancel.addEventListener("click",function(){closeModal(el.exportModal);});el.exportGo.addEventListener("click",runExport);closeOnBackdrop(el.exportModal);
   el.importLookaheadBtn.addEventListener("click",function(){
     if(typeof XLSX==="undefined"){toast("Excel library couldn't load — check your internet connection and reload the page.");return;}
     el.importLookaheadFile.click();
@@ -1816,12 +1876,12 @@ select[multiple].text-input{height:auto;min-height:74px;padding:6px;}
   el.aiAddTasksBtn.addEventListener("click",aiAddDraft);
   el.aiCopyBtn.addEventListener("click",aiCopy);
   el.aiInput.addEventListener("keydown",function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();var q=el.aiInput.value.trim();if(q)aiText("ask",q);}});
-  el.importClose.addEventListener("click",function(){closeModal(el.importModal);});el.importCancel.addEventListener("click",function(){closeModal(el.importModal);});el.importConfirm.addEventListener("click",confirmImport);el.importModal.addEventListener("mousedown",function(e){if(e.target===el.importModal)closeModal(el.importModal);});
+  el.importClose.addEventListener("click",function(){closeModal(el.importModal);});el.importCancel.addEventListener("click",function(){closeModal(el.importModal);});el.importConfirm.addEventListener("click",confirmImport);closeOnBackdrop(el.importModal);
   el.calendarScroll.addEventListener("scroll",function(){if(openWeekPop)closeWeekPop();if(view!=="month"||labelTick)return;labelTick=true;requestAnimationFrame(function(){labelTick=false;updateMonthLabel();});});
   document.addEventListener("visibilitychange",function(){
     if(document.hidden)return;
     var nt=new Date();nt.setHours(0,0,0,0);
-    if(ymd(nt)!==ymd(today)){today=nt;renderCalendar();}
+    if(ymd(nt)!==ymd(today)){today=nt;resetRange();renderCalendar();}
   });
 
   recomputeSchedule();
